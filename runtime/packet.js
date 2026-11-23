@@ -17,7 +17,7 @@ function testNames(config, addedText) {
   return names;
 }
 
-function render({ config, base, files, counts, addedText, findings, risk, ci }) {
+function render({ config, base, files, counts, addedText, findings, risk, notRun, exceptionsUsed }) {
   const branch = (lib.git(['rev-parse', '--abbrev-ref', 'HEAD']) || '').trim() || 'unknown';
   const out = [];
   out.push(`# Review packet: ${branch}`);
@@ -79,17 +79,20 @@ function render({ config, base, files, counts, addedText, findings, risk, ci }) 
   out.push('');
   out.push('## Not verified by the machine');
   out.push('');
-  const skipped = [];
-  if (!ci) {
-    for (const [name, z] of Object.entries(config.zones || {})) for (const c of z.verifyCi || []) skipped.push(`\`${c}\` (${name}; runs only in CI)`);
-  }
+  const skipped = (notRun || []).slice();
   for (const f of findings.filter((x) => x.mode === 'warn')) skipped.push(`control \`${f.control}\` is in warn mode: its findings do not block`);
-  for (const c of ['skills', 'tdd', 'suppressions', 'protected', 'architecture', 'verify', 'changeSize']) {
-    if (lib.mode(config, c) === 'off') skipped.push(`control \`${c}\` is off`);
-  }
+  for (const [c, m] of Object.entries(config.controls || {})) if (m === 'off') skipped.push(`control \`${c}\` is off`);
   skipped.push('whether the design is right, and whether the tests cover the cases that matter');
   for (const s of skipped) out.push(`- ${s}`);
   out.push('');
+  if ((exceptionsUsed || []).length) {
+    out.push('## Exceptions in force for this change');
+    out.push('');
+    out.push('The maintainer allowed these rules to be skipped here. Each has a reason and an expiry date.');
+    out.push('');
+    for (const e of exceptionsUsed) out.push(`- ${e}`);
+    out.push('');
+  }
   out.push('## From the author');
   out.push('');
   out.push('_The author completes this section. An empty answer is not acceptable; "none" must be a deliberate statement._');

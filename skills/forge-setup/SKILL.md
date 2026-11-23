@@ -39,8 +39,9 @@ node "{{FORGE_HOME}}/setup/setup.js" . --scaffold-backend Acme.Billing --efcore 
 ```
 
 The name is the .NET root namespace; ask the user for it. The scaffold builds with zero warnings and its tests
-pass as generated: run `dotnet build` and `dotnet test` on the new solution and confirm before going on. It does
-not wire `npm run api`, the dev proxy or the Dockerfile; say so.
+pass as generated: run `dotnet build` and `dotnet test` on the new solution and confirm before going on. It
+wires the dev loop (`npm run api`, `npm run test:api`, the Angular dev-server proxy) but does not change the
+Dockerfile, so the image still serves only the Angular build; say so.
 
 ## 3. Tune it with the user
 
@@ -53,9 +54,10 @@ node "{{FORGE_HOME}}/setup/setup.js" . --set 'zones.backend.verify=["dotnet buil
 
 Go through these with them:
 
-1. **Verify commands.** Run each one listed in the report now. A command that fails today, or needs a
-   database or other service that is not always available locally, must not stay in `verify`: move it to that
-   zone's `verifyCi` (CI only) and say so. Verification that blocks on something unrelated to the change gets
+1. **Verify commands.** Run each one listed in the report now. A command that fails today must not stay in
+   `verify`. For one that needs a database or another service, ask the user whether that service is always
+   available on their machine: if it is, it stays; if not, move it to that zone's `verifyCi` (run on demand
+   with `check.js --ci`) and say so. Verification that blocks on something unrelated to the change gets
    switched off, which is worse than not having it.
 2. **Test-first zones.** Show the `tdd.protected` and `tdd.exempt` globs of each zone and check they match where
    behaviour really lives in this project.
@@ -64,8 +66,15 @@ Go through these with them:
 4. **Structure-rule baseline.** The report lists existing violations per rule. These are tolerated, and nothing
    new is. Read the numbers to the user: they are the migration backlog. After code is migrated, the maintainer
    shrinks the baseline with `--baseline`; never run that yourself to make a failing check pass.
-5. **CI.** If the report says CI does not run the forge checks, show `.claude/forge/ci-example.yml` and propose
-   the exact step to add to the project's existing workflow. Add it only if the user agrees.
+5. **Optional tools.** If the report says no unused-code or mutation-testing tool was found, tell the user what
+   that leaves unchecked. Installing knip or Stryker changes the project's dependencies: propose it, and do it
+   only if they agree. Run setup again afterwards so it picks the tool up.
+6. **Exceptions.** Granting one (`--except`), revoking one and re-recording the baseline are the maintainer's
+   own commands; a session is blocked from running them. If a rule cannot be met, explain why and give the user
+   the exact command to run, with a reason and the fewest files and days that will do.
+
+Do **not** add anything to CI. The checks run locally by design; mention `--ci-example` only if the user asks
+for a CI gate.
 
 ## 4. Confirm
 
@@ -77,7 +86,9 @@ Then tell the user, plainly:
 
 - what was installed and which controls are in which mode;
 - which verify commands you ran and whether they passed;
-- what is **not** done or not verified (CI not wired, a command moved to CI-only, a skill that failed to download);
+- what is **not** done or not verified (a command moved out of `verify`, a tool that is not installed, a skill
+  or plugin that failed to download), and that edits made outside a Claude session are not checked unless
+  someone runs `node .claude/forge/check.js`;
 - that they must **restart the Claude session** for the hooks and plugins to load, and review and commit the diff.
 
 ## After a starter /upgrade

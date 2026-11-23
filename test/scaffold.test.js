@@ -12,7 +12,7 @@ const { write, git, makeProject, setup, hook, configOf } = require('./helpers');
 function frontendOnlyProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-scaffold-'));
   write(root, 'package.json', JSON.stringify({ name: 'demo', scripts: { build: 'ng build', test: 'ng test' }, dependencies: { '@angular/core': '22.1.6' } }));
-  write(root, 'angular.json', '{}');
+  write(root, 'angular.json', JSON.stringify({ projects: { demo: { architect: { serve: { builder: 'dev-server' } } } } }));
   write(root, 'raice.json', JSON.stringify({ project: { name: 'billing-tool' } }));
   write(root, '.claude/skills/angular-developer/SKILL.md', '---\nname: angular-developer\n---\n');
   write(root, 'src/app/app.component.ts', 'export class AppComponent {}\n');
@@ -42,11 +42,16 @@ test('scaffold creates four layers named after the project and served under its 
   }
 
   const c = configOf(root);
-  assert.deepStrictEqual(c.zones.backend.verify, [
-    'dotnet build "api/Acme.Billing.slnx" --nologo -v q -warnaserror',
-    'dotnet test "api/tests/Acme.Billing.Api.Tests/Acme.Billing.Api.Tests.csproj" --nologo',
-    'dotnet test "api/tests/Acme.Billing.Application.Tests/Acme.Billing.Application.Tests.csproj" --nologo',
-  ]);
+  assert.deepStrictEqual(c.zones.backend.verify, ['dotnet build "api/Acme.Billing.slnx" --nologo -v q -warnaserror', 'npm run test:api']);
+
+  // The dev loop is wired: npm scripts, and the Angular dev server forwards the API route.
+  assert.match(r.out, /dev loop wired: npm run api, npm run test:api, proxy\.conf\.json, angular\.json proxyConfig/);
+  const pkg = JSON.parse(read(root, 'package.json'));
+  assert.strictEqual(pkg.scripts.api, 'dotnet watch --project api/src/Acme.Billing.Api --no-hot-reload');
+  assert.strictEqual(pkg.scripts['test:api'], 'dotnet test api/Acme.Billing.slnx --nologo');
+  assert.strictEqual(pkg.scripts.build, 'ng build', 'existing scripts are kept');
+  assert.strictEqual(JSON.parse(read(root, 'proxy.conf.json'))['/billing-tool/api'].target, 'http://localhost:5080');
+  assert.strictEqual(JSON.parse(read(root, 'angular.json')).projects.demo.architect.serve.options.proxyConfig, 'proxy.conf.json');
   const baseline = JSON.parse(read(root, '.claude/forge/arch-baseline.json'));
   assert.deepStrictEqual(baseline, {}, 'the scaffold breaks none of its own rules');
 });
@@ -67,7 +72,7 @@ test('scaffold on a project installed before it had a backend fills in the verif
   assert.strictEqual(setup(root, '--preset', 'new').code, 0);
   assert.deepStrictEqual(configOf(root).zones.backend.verify, []);
   assert.strictEqual(setup(root, '--scaffold-backend', 'Billing').code, 0);
-  assert.strictEqual(configOf(root).zones.backend.verify.length, 3);
+  assert.strictEqual(configOf(root).zones.backend.verify.length, 2);
 });
 
 test('scaffold refuses an existing backend and a bad name', () => {

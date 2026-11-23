@@ -8,6 +8,9 @@
 //   node setup.js [projectDir] --preset new|existing
 //   node setup.js [projectDir] --set controls.tdd=warn --set changeSize.maxLines=300
 //   node setup.js [projectDir] --offline       skip anything that needs the network
+//   node setup.js [projectDir] --ci-example    also write an example CI step (checks are local by default)
+//   node setup.js [projectDir] --except tdd --paths "api/src/**/Import*.cs" --reason "..." [--days 14]
+//   node setup.js [projectDir] --exceptions    list them        --revoke <id>   remove one
 //   node setup.js [projectDir] --scaffold-backend Acme.Billing   create api/ in four layers (only if there is none)
 //                              --efcore        ...with EF Core, SQLite-backed endpoint tests and the query counter
 //   node setup.js [projectDir] --baseline     re-record today's structure-rule violations (after a migration)
@@ -25,12 +28,13 @@ const FORGE_HOME = path.resolve(__dirname, '..');
 const VERSION = require(path.join(FORGE_HOME, 'package.json')).version;
 const PINS = require(path.join(FORGE_HOME, 'pins.json'));
 const MODES = ['off', 'warn', 'block'];
-const CONTROLS = ['skills', 'tdd', 'suppressions', 'protected', 'architecture', 'verify', 'changeSize'];
+const FORGE_SKILLS = ['forge-backend', 'forge-frontend', 'forge-review'];
+const CONTROLS = ['skills', 'plan', 'tdd', 'suppressions', 'security', 'protected', 'architecture', 'deadCode', 'verify', 'review', 'changeSize', 'audit', 'mutation'];
 
 // ---- arguments -------------------------------------------------------------
 
 const argv = process.argv.slice(2);
-const flags = { check: false, offline: false, baseline: false, preset: null, set: [] };
+const flags = { check: false, offline: false, baseline: false, preset: null, set: [], except: null, revoke: null, exceptions: false, ciExample: false };
 let target = null;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -41,6 +45,13 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--efcore') flags.efcore = true;
   else if (a === '--preset') flags.preset = argv[++i];
   else if (a === '--set') flags.set.push(argv[++i]);
+  else if (a === '--except') flags.except = Object.assign(flags.except || {}, { control: argv[++i] });
+  else if (a === '--paths') flags.except = Object.assign(flags.except || {}, { paths: argv[++i] });
+  else if (a === '--reason') flags.except = Object.assign(flags.except || {}, { reason: argv[++i] });
+  else if (a === '--days') flags.except = Object.assign(flags.except || {}, { days: Number(argv[++i]) });
+  else if (a === '--revoke') flags.revoke = argv[++i];
+  else if (a === '--exceptions') flags.exceptions = true;
+  else if (a === '--ci-example') flags.ciExample = true;
   else if (a.startsWith('--')) fail(`Unknown option ${a}`);
   else target = a;
 }
@@ -136,6 +147,11 @@ function detect() {
     d.workflows.push(posix(path.relative(ROOT, file)));
     if (/\.claude\/forge\/check\.js/.test(readText(file) || '')) d.ciRunsForge = true;
   });
+  // Optional tools the project may already have. inv-forge uses them; it does not install them.
+  d.hasKnip = !!deps.knip;
+  d.hasStryker = !!deps['@stryker-mutator/core'];
+  d.hasDotnetStryker = ['dotnet-tools.json', '.config/dotnet-tools.json', 'api/dotnet-tools.json', 'api/.config/dotnet-tools.json']
+    .some((f) => /dotnet-stryker/.test(readText(path.join(ROOT, f)) || ''));
   return d;
 }
 
@@ -187,6 +203,28 @@ function defaultConfig(d, preset) {
       architecture: 'block', // safe on legacy code: the baseline allows what is already there
       verify: 'block',
       changeSize: strict ? 'block' : 'warn',
+      security: 'block',     // judges only added lines, so it is safe on legacy code too
+      deadCode: strict ? 'block' : 'warn',
+      plan: strict ? 'block' : 'warn',
+      review: strict ? 'block' : 'warn',
+      audit: 'warn',         // runs only with check.js --audit
+      mutation: 'warn',      // runs only with check.js --mutation
+    },
+    plan: { requiredFromLines: 150, maxAgeDays: 14 },
+    review: { requiredFromRisk: 'medium' },
+    deadCode: { commands: d.hasKnip ? ['npx knip --no-config-hints'] : [] },
+    audit: {
+      commands: [
+        ...(d.hasFrontend ? ['npm audit --omit=dev --audit-level=high'] : []),
+        ...(d.solution ? [{ command: `dotnet list "${d.solution}" package --vulnerable --include-transitive`, failOn: 'has the following vulnerable packages' }] : []),
+      ],
+    },
+    // Stryker runs from each test project's folder. --break-at makes a low score fail the run.
+    mutation: {
+      commands: [
+        ...(d.hasDotnetStryker ? d.testProjects.map((p) => `cd "${path.posix.dirname(p)}" && dotnet stryker --break-at 60 --reporter cleartext`) : []),
+        ...(d.hasStryker ? ['npx stryker run'] : []),
+      ],
     },
     zones,
     ignore: ['**/*.md', '**/bin/**', '**/obj/**'],
@@ -402,7 +440,83 @@ function scaffoldBackend(name) {
   const visitFrom = (dir) => { from = dir; visit(dir); };
   visitFrom(path.join(FORGE_HOME, 'templates', 'backend'));
   if (flags.efcore) visitFrom(path.join(FORGE_HOME, 'templates', 'backend-efcore'));
-  return { name, slug, files: new Set(created).size, efcore: !!flags.efcore };
+  return { name, slug, files: new Set(created).size, efcore: !!flags.efcore, wired: wireDevLoop(name, slug) };
+}
+
+// Makes `npm run api` + `npm start` work together: the Angular dev server forwards the API's
+// route to the .NET process on port 5080. Existing entries are left as they are.
+function wireDevLoop(name, slug) {
+  const done = [];
+  const pkgFile = path.join(ROOT, 'package.json');
+  const pkg = readJson(pkgFile, null);
+  if (pkg) {
+    pkg.scripts = pkg.scripts || {};
+    const wanted = {
+      api: `dotnet watch --project api/src/${name}.Api --no-hot-reload`,
+      'test:api': `dotnet test api/${name}.slnx --nologo`,
+    };
+    for (const [script, command] of Object.entries(wanted)) {
+      if (!pkg.scripts[script]) { pkg.scripts[script] = command; done.push(`npm run ${script}`); }
+    }
+    writeJson(pkgFile, pkg);
+  }
+  const proxyFile = path.join(ROOT, 'proxy.conf.json');
+  const proxy = readJson(proxyFile, {}) || {};
+  if (!proxy[`/${slug}/api`]) {
+    proxy[`/${slug}/api`] = { target: 'http://localhost:5080', secure: false, changeOrigin: false, logLevel: 'warn' };
+    writeJson(proxyFile, proxy);
+    done.push('proxy.conf.json');
+  }
+  const angularFile = path.join(ROOT, 'angular.json');
+  const angular = readJson(angularFile, null);
+  if (angular && angular.projects) {
+    let changed = false;
+    for (const project of Object.values(angular.projects)) {
+      const serve = project.architect && project.architect.serve;
+      if (!serve) continue;
+      serve.options = serve.options || {};
+      if (!serve.options.proxyConfig) { serve.options.proxyConfig = 'proxy.conf.json'; changed = true; }
+    }
+    if (changed) { writeJson(angularFile, angular); done.push('angular.json proxyConfig'); }
+  }
+  return done;
+}
+
+// ---- exceptions ------------------------------------------------------------
+// Granted and revoked here, by the maintainer, in their own terminal. A session cannot.
+
+function manageExceptions() {
+  const file = path.join(FORGE_DIR, 'exceptions.json');
+  if (!fs.existsSync(path.join(FORGE_DIR, 'config.json'))) fail('inv-forge is not installed in this project yet.');
+  let list = readJson(file, []) || [];
+  const today = new Date().toISOString().slice(0, 10);
+  const out = [];
+  if (flags.except) {
+    const e = flags.except;
+    const family = String(e.control || '').split('/')[0];
+    if (!CONTROLS.includes(family) || family === 'protected') fail(`--except needs a control (not "protected"): ${CONTROLS.filter((c) => c !== 'protected').join(', ')}, or architecture/<rule>`);
+    if (!e.paths) fail('--except needs --paths "glob[,glob]": an exception is always for named files');
+    if (!e.reason || e.reason.trim().length < 10) fail('--except needs --reason "why this rule cannot be met here" (at least a sentence)');
+    const days = e.days || 14;
+    if (!(days >= 1 && days <= 90)) fail('--days is between 1 and 90: an exception is temporary by definition');
+    const expires = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+    const id = 'x' + Date.now().toString(36);
+    list.push({ id, control: e.control, paths: e.paths.split(',').map((p) => p.trim()).filter(Boolean), reason: e.reason.trim(), grantedAt: today, expires });
+    out.push(`Granted ${id}: ${e.control} on ${e.paths} until ${expires}`);
+  }
+  if (flags.revoke) {
+    const before = list.length;
+    list = list.filter((e) => e.id !== flags.revoke);
+    out.push(before === list.length ? `No exception with id ${flags.revoke}` : `Revoked ${flags.revoke}`);
+  }
+  if (flags.except || flags.revoke) writeJson(file, list);
+  out.push('');
+  out.push(list.length ? 'Exceptions:' : 'No exceptions.');
+  for (const e of list) {
+    out.push(`  ${e.id}  ${e.expires < today ? 'EXPIRED' : 'active '}  ${e.control}  ${e.paths.join(', ')}  until ${e.expires}  "${e.reason}"`);
+  }
+  console.log(out.join('\n') + '\n\nRESULT: ok');
+  process.exit(0);
 }
 
 // ---- drift check -----------------------------------------------------------
@@ -421,7 +535,7 @@ function drift(d) {
   for (const f of ['session-start.js', 'pre-edit.js', 'pre-bash.js', 'skill-log.js', 'post-edit.js', 'stop-verify.js']) {
     if (!wired.includes(`.claude/forge/hooks/${f}`)) problems.push(`hook not wired in .claude/settings.json: ${f}`);
   }
-  for (const s of ['forge-backend', 'forge-frontend']) {
+  for (const s of FORGE_SKILLS) {
     if (!exists('.claude', 'skills', s, 'SKILL.md')) problems.push(`missing skill ${s}`);
   }
   if (d.hasFrontend && !exists('.claude', 'skills', 'angular-developer', 'SKILL.md')) problems.push('missing skill angular-developer');
@@ -440,6 +554,7 @@ function drift(d) {
 // ---- main ------------------------------------------------------------------
 
 if (!fs.existsSync(path.join(ROOT, 'package.json'))) fail(`${ROOT} has no package.json. Run this in the project root.`);
+if (flags.except || flags.revoke || flags.exceptions) manageExceptions();
 const scaffolded = flags.scaffold && !flags.check ? scaffoldBackend(flags.scaffold) : null;
 const d = detect();
 if (!d.isGit) fail('The project is not a git repository. The controls compare against git, so run `git init` and commit first.');
@@ -468,6 +583,10 @@ const config = mergeDefaults(defaults, readJson(configFile, undefined));
 for (const [name, zone] of Object.entries(config.zones)) {
   if (!zone.verify.length && defaults.zones[name]) zone.verify = defaults.zones[name].verify;
 }
+// The same for optional tools: an empty list picks up a tool that was installed since.
+for (const key of ['deadCode', 'audit', 'mutation']) {
+  if (!config[key].commands.length) config[key].commands = defaults[key].commands;
+}
 for (const a of flags.set) applySet(config, a);
 writeJson(configFile, config);
 
@@ -480,7 +599,7 @@ if (!hadBaseline || flags.baseline) {
 const baseline = readJson(baselineFile, {});
 
 // 3. skills
-for (const s of ['forge-backend', 'forge-frontend']) {
+for (const s of FORGE_SKILLS) {
   copyDir(path.join(FORGE_HOME, 'templates', 'skills', s), path.join(ROOT, '.claude', 'skills', s));
 }
 const angular = d.hasFrontend ? vendorAngularSkill() : 'not needed (no Angular app found)';
@@ -499,14 +618,25 @@ if (!ignore.includes('.claude/forge/.state/')) {
 const claudeFile = path.join(ROOT, 'CLAUDE.md');
 writeText(claudeFile, upsertBlock(readText(claudeFile) || '# CLAUDE.md\n', claudeBlock()));
 
-// 5. CI example and manifest
-writeText(path.join(FORGE_DIR, 'ci-example.yml'), readText(path.join(FORGE_HOME, 'templates', 'ci-example.yml')));
+// 5. manifest. The checks run locally by design; a CI example is written only on request,
+//    so a project is never left with a workflow its next owner cannot run.
+const ciExampleFile = path.join(FORGE_DIR, 'ci-example.yml');
+if (flags.ciExample) writeText(ciExampleFile, readText(path.join(FORGE_HOME, 'templates', 'ci-example.yml')));
+else fs.rmSync(ciExampleFile, { force: true });
+
+// The version of each plugin as installed here, so a change of version is visible in the diff.
+const installedPlugins = pluginState().installed;
+const pluginVersions = {};
+for (const id of Object.keys(wantedPlugins(d))) {
+  const entry = (installedPlugins[id] || []).find((e) => e.scope === 'user' || (e.projectPath && samePath(e.projectPath, ROOT)));
+  pluginVersions[id] = entry ? `${entry.version || '?'} (${String(entry.gitCommitSha || 'unknown').slice(0, 8)})` : 'not installed';
+}
 writeJson(path.join(FORGE_DIR, 'forge.json'), {
   version: VERSION,
   preset,
   installedAt: new Date().toISOString(),
   previousVersion: previous ? previous.version : null,
-  pins: { angularSkill: PINS.angularSkill.commit, plugins: Object.keys(wantedPlugins(d)) },
+  pins: { angularSkill: PINS.angularSkill.commit, plugins: pluginVersions },
 });
 
 // ---- report ----------------------------------------------------------------
@@ -516,8 +646,14 @@ lines.push(`inv-forge ${VERSION} ${previous ? 'updated' : 'installed'} in ${ROOT
 lines.push('');
 lines.push(`Preset: ${preset}${flags.preset ? '' : previous ? ' (kept from the previous install)' : ` (auto-detected from ${d.sourceFiles} source files)`}`);
 lines.push(`Frontend: ${d.hasFrontend ? 'Angular ' + d.angular : 'not found'}`);
-lines.push(`Backend:  ${d.hasBackend ? (d.solution || 'projects under api/') + (d.usesEfCore ? ', EF Core' : '') : 'not found (the 4-layer scaffold arrives in delivery 2)'}`);
-if (scaffolded) lines.push(`Scaffold: created ${scaffolded.files} files under api/ for ${scaffolded.name}, served at /${scaffolded.slug}/api${scaffolded.efcore ? ', with EF Core and the query counter' : ''}`);
+lines.push(`Backend:  ${d.hasBackend ? (d.solution || 'projects under api/') + (d.usesEfCore ? ', EF Core' : '') : 'not found (create one with --scaffold-backend <Name>)'}`);
+if (scaffolded) {
+  lines.push(`Scaffold: created ${scaffolded.files} files under api/ for ${scaffolded.name}, served at /${scaffolded.slug}/api${scaffolded.efcore ? ', with EF Core and the query counter' : ''}`);
+  lines.push(`          dev loop wired: ${scaffolded.wired.join(', ') || 'nothing to add'}. The Dockerfile is NOT changed: the image still serves only the Angular build.`);
+}
+const exceptionList = readJson(path.join(FORGE_DIR, 'exceptions.json'), []) || [];
+const isoToday = new Date().toISOString().slice(0, 10);
+lines.push(`Exceptions: ${exceptionList.filter((e) => e.expires >= isoToday).length} active, ${exceptionList.filter((e) => e.expires < isoToday).length} expired`);
 lines.push(`Angular skill: ${angular}`);
 lines.push('Plugins:');
 for (const p of plugins) lines.push(`  ${p}`);
@@ -541,7 +677,9 @@ lines.push('');
 lines.push('Needs a human:');
 if (!d.starterSetUp) lines.push('  - raice.json not found: the starter\'s /setup has not been run in this project.');
 if (plugins.some((p) => p.includes('NOT installed'))) lines.push('  - Some plugins are not installed (see above). Sessions will start without those skills until they are.');
-if (!d.ciRunsForge) lines.push('  - CI does not run the forge checks yet. See .claude/forge/ci-example.yml' + (d.workflows.length ? ` and add the step to ${d.workflows.join(', ')}.` : '.'));
+if (flags.ciExample) lines.push('  - A CI example was written to .claude/forge/ci-example.yml. Nothing runs in CI until its step is added to a workflow.');
+if (!config.deadCode.commands.length) lines.push('  - No unused-code tool found (knip). Leftovers in a change are still checked; unused files and exports are not.');
+if (!config.mutation.commands.length) lines.push('  - No mutation-testing tool found (Stryker). Nothing checks that the tests would notice a broken implementation.');
 lines.push('  - Restart the Claude session: hooks and plugins load when a session starts.');
 lines.push('  - Confirm the verify commands above pass today and need no external service (database, VPN).');
 console.log(lines.join('\n') + '\n\nRESULT: ok');

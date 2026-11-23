@@ -21,9 +21,16 @@ test('setup installs everything and keeps what the starter put there', () => {
   assert.ok(s.permissions.allow.includes('Bash(dotnet test:*)'));
   assert.ok(s.enabledPlugins['superpowers@claude-plugins-official']);
   assert.ok(s.enabledPlugins['dotnet@dotnet-agent-skills']);
-  for (const f of ['lib.js', 'check.js', 'checks.js', 'hooks/pre-edit.js', 'config.json', 'forge.json', 'ci-example.yml']) {
+  for (const f of ['lib.js', 'check.js', 'checks.js', 'hooks/pre-edit.js', 'config.json', 'forge.json', 'arch-baseline.json']) {
     assert.ok(fs.existsSync(path.join(root, '.claude', 'forge', f)), f);
   }
+  // The checks are local by design: no CI file unless it is asked for.
+  assert.ok(!fs.existsSync(path.join(root, '.claude', 'forge', 'ci-example.yml')));
+  assert.doesNotMatch(r.out, /CI does not run/);
+  assert.match(setup(root, '--ci-example').out, /A CI example was written/);
+  assert.ok(fs.existsSync(path.join(root, '.claude', 'forge', 'ci-example.yml')));
+  assert.strictEqual(setup(root).code, 0);
+  assert.ok(!fs.existsSync(path.join(root, '.claude', 'forge', 'ci-example.yml')), 'removed again when not asked for');
   assert.ok(fs.existsSync(path.join(root, '.claude', 'skills', 'forge-backend', 'SKILL.md')));
   const claude = fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8');
   assert.match(claude, /^# CLAUDE\.md\n\n<!-- inv-forge:start/);
@@ -212,9 +219,10 @@ test('check.js applies the same rules to a branch diff and writes a fixed-format
   assert.match(r.stdout, /\[FAIL\] tdd/);
   assert.match(r.stdout, /\[pass\] verify/);
   const result = JSON.parse(fs.readFileSync(out, 'utf8'));
-  assert.strictEqual(result.schema, 1);
+  assert.strictEqual(result.schema, 2);
   assert.strictEqual(result.passed, false);
-  assert.deepStrictEqual(result.findings.map((f) => f.control), ['suppressions', 'protected', 'tdd', 'architecture', 'changeSize', 'verify']);
+  assert.deepStrictEqual(result.findings.map((f) => f.control),
+    ['suppressions', 'protected', 'security', 'tdd', 'plan', 'architecture', 'deadCode', 'changeSize', 'verify']);
 
   write(root, 'src/app/core/rules.ts', 'export const rule = 3;\n');
   write(root, 'src/app/core/rules.spec.ts', 'it("keeps rule 3", () => {});\n');

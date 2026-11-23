@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.0
+
+Continuous quality, and a decision: the checks run locally only.
+
+- **Local by design.** Setup no longer writes a CI example or asks for a CI step; `--ci-example` writes one on
+  request.
+- **Exceptions.** `setup.js --except <control> --paths ... --reason ... [--days N]`, `--exceptions`, `--revoke`.
+  For named files, with a reason, at most 90 days, never for `protected`. Only the maintainer grants them;
+  every use is reported at the end of the turn, at session start and in the review packet.
+- New controls:
+  - `security`: secrets in any file, real personal data in tests and fixtures (on edit and at end of turn).
+  - `deadCode`: commented-out code and ownerless TODOs in a change; unused-code tools when configured.
+  - `plan`: past a size threshold, edits need a plan the user approved. Claude cannot write the approval.
+  - `review`: from medium risk up, the turn cannot end before the `forge-review` skill has run.
+  - `audit` (`check.js --audit`) and `mutation` (`check.js --mutation`), on request.
+- New skill `forge-review`: one reviewer per lens, then an attempt to refute each finding.
+- Metrics: every `check.js` run is recorded locally; `check.js --metrics` shows the history and the backlog.
+- Scaffold wires the dev loop: `npm run api`, `npm run test:api` and the Angular dev-server proxy.
+- Setup detects knip and Stryker, records the installed version of each plugin, and fills in tool commands for
+  a project that gains a tool after it was installed.
+- Result file schema is now 2 (adds `productionLines` and `exceptionsUsed`).
+
 ## 0.2.1
 
 Refinements from the live test of the structure rules (every hook fired with the right rule).

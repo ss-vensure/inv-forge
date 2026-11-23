@@ -12,12 +12,13 @@ const config = lib.loadConfig();
 const command = String((input.tool_input || {}).command || '');
 if (!config || lib.mode(config, 'protected') !== 'block' || !command) process.exit(0);
 
-// Re-recording the baseline forgives every current violation. Only the maintainer does that,
-// in their own terminal, after a migration.
-if (/setup\.js\b[^;&|]*--baseline\b/.test(command)) {
+// Forgiving violations is the maintainer's call, made in their own terminal: re-recording the
+// baseline forgives every current one, and an exception forgives a rule for some files.
+if (/setup\.js\b[^;&|]*--(baseline|except|revoke)\b/.test(command)) {
   process.stderr.write(
     'inv-forge blocked this command (the "protected" control working, not a malfunction): re-recording the ' +
-    'structure-rule baseline is the maintainer\'s decision. Fix the violation, or stop and ask the user to run it.\n');
+    'baseline and granting or revoking exceptions are the maintainer\'s decisions. Fix the violation, or stop, ' +
+    'explain to the user why the rule cannot be met here, and let them run it.\n');
   process.exit(2);
 }
 

@@ -159,6 +159,7 @@ test('review packet: risk, the tests as specification, checks, and what was not 
   assert.match(packet, /- denies a user without the Admin role/);
   assert.match(packet, /- Given a negative value When created Then it is rejected/);
   assert.match(packet, /\| verify \| block \| pass \|/);
-  assert.match(packet, /dotnet test --filter Integration.*runs only in CI/);
+  assert.match(packet, /dotnet test --filter Integration.*runs only with --ci/);
+  assert.match(packet, /mutation testing: no tool is configured/);
   assert.match(packet, /What I did NOT verify/);
 });

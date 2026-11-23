@@ -1,7 +1,30 @@
 'use strict';
-// Checks shared by the Stop hook (local, only what was touched) and check.js (CI, everything).
+// Checks shared by the hooks (only what was touched) and check.js (everything).
 
+const fs = require('fs');
+const path = require('path');
 const lib = require('./lib');
+
+// The plan this work is being done under: a file in plansDir that a person marked
+// "Status: approved" and that belongs to current work (changed in the working tree, or last
+// committed within plan.maxAgeDays). Returns its path, or null.
+function approvedPlan(config, files) {
+  const dir = String(config.plansDir || '').replace(/\/+$/, '');
+  if (!dir) return null;
+  let names;
+  try { names = fs.readdirSync(path.join(lib.ROOT, dir)).filter((n) => n.endsWith('.md')); } catch (_) { return null; }
+  const maxAge = ((config.plan && config.plan.maxAgeDays) || 14) * 86400;
+  for (const name of names) {
+    const rel = dir + '/' + name;
+    let text;
+    try { text = fs.readFileSync(path.join(lib.ROOT, rel), 'utf8'); } catch (_) { continue; }
+    if (!/^\s*Status:\s*approved\b/im.test(text)) continue;
+    if ((files || []).some((f) => f.path === rel)) return rel;
+    const committed = Number((lib.git(['log', '-1', '--format=%ct', '--', rel]) || '').trim());
+    if (committed && Date.now() / 1000 - committed <= maxAge) return rel;
+  }
+  return null;
+}
 
 // Zone names that the given files fall into.
 function zonesTouched(config, files) {
@@ -55,4 +78,4 @@ function addedTextFromPatch(patch) {
   return added;
 }
 
-module.exports = { addedTextFromPatch, zonesTouched, verify, productionAdded, describeFailures };
+module.exports = { approvedPlan, addedTextFromPatch, zonesTouched, verify, productionAdded, describeFailures };

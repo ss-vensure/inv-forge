@@ -196,6 +196,26 @@ function hasNewTest(zone) {
   });
 }
 
+// ---- exceptions ------------------------------------------------------------
+// The sanctioned way past a rule: granted by the maintainer, for named paths, with a reason and
+// an expiry date. Kept in .claude/forge/exceptions.json, which a session cannot edit.
+//   [{ id, control, paths, reason, expires: "YYYY-MM-DD", grantedAt }]
+// `control` is a control name, or "architecture/<rule>" for a single structure rule.
+
+function loadExceptions() {
+  const list = readJson(path.join(FORGE_DIR, 'exceptions.json'), []);
+  return Array.isArray(list) ? list : [];
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+const isExpired = (e) => !e.expires || String(e.expires) < today();
+
+// The exception that covers this control on this file today, or null.
+function activeException(control, rel) {
+  const family = String(control).split('/')[0];
+  return loadExceptions().find((e) => !isExpired(e) && (e.control === control || e.control === family) && matchAny(rel, e.paths)) || null;
+}
+
 // ---- per-session state -----------------------------------------------------
 
 function stateFile(sessionId) {
@@ -204,7 +224,7 @@ function stateFile(sessionId) {
 }
 
 function loadState(sessionId) {
-  return Object.assign({ skills: [], warnings: [], stopBlocks: 0 }, readJson(stateFile(sessionId), {}));
+  return Object.assign({ skills: [], warnings: [], exceptionsUsed: [], stopBlocks: 0 }, readJson(stateFile(sessionId), {}));
 }
 
 function saveState(sessionId, state) {
@@ -266,5 +286,6 @@ module.exports = {
   readStdinJson, readJson, writeJson, loadConfig, mode,
   toPosix, relPath, globToRegex, matchAny, zoneOf, isTest, isTddProtected,
   git, isGitRepo, changedFiles, addedLines, fingerprint, hasNewTest, TEST_DECLARATION,
+  loadExceptions, isExpired, activeException,
   loadState, saveState, countSuppressions, newSuppressions, run,
 };

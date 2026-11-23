@@ -3,8 +3,11 @@
 // PreToolUse (Edit | Write | MultiEdit). Decides whether an edit may happen.
 // Exit 2 blocks the edit and feeds stderr back to Claude. Any other outcome lets it through.
 // A control in "warn" mode never blocks: the finding is stored and reported when the turn ends.
+// An exception granted by the maintainer lets the edit through and is reported the same way.
 
 const lib = require('../lib');
+const checks = require('../checks');
+const diffchecks = require('../diffchecks');
 
 const input = lib.readStdinJson();
 const config = lib.loadConfig();
@@ -22,6 +25,12 @@ const blocks = [];
 function enforce(control, message) {
   const m = lib.mode(config, control);
   if (m === 'off') return;
+  const exception = control === 'protected' ? null : lib.activeException(control, rel);
+  if (exception) {
+    const note = `${control} on ${rel}: exception "${exception.reason}" until ${exception.expires}`;
+    if (!state.exceptionsUsed.includes(note)) state.exceptionsUsed.push(note);
+    return;
+  }
   if (m === 'warn') {
     const note = `[${control}] ${rel}: ${message.split('\n')[0]}`;
     if (!state.warnings.includes(note)) state.warnings.push(note);
@@ -47,27 +56,59 @@ if (added.length) {
     'stop and ask the user: only they can authorise one.');
 }
 
+// 3. Secrets, and real personal data in tests or fixtures.
+const had = diffchecks.securityIn(config, rel, before);
+const sensitive = diffchecks.securityIn(config, rel, after).filter((n) => !had.includes(n));
+if (sensitive.length) {
+  enforce('security',
+    `This edit would put a ${sensitive.join(' and a ')} in ${rel}.\n` +
+    'Secrets come from user-secrets or environment variables, never from a file in the repository. ' +
+    'Test data is invented: fake names, and addresses on example.test.');
+}
+
+// 4. A plan is approved by a person. Claude does not write the approval.
+const plansDir = String(config.plansDir || '').replace(/\/+$/, '');
+const APPROVAL = /^\s*Status:\s*approved\b/im;
+if (plansDir && rel.startsWith(plansDir + '/') && APPROVAL.test(after) && !APPROVAL.test(before)) {
+  enforce('plan',
+    `"Status: approved" in ${rel} is written by the user, not by Claude.\n` +
+    'Save the plan with "Status: proposed", show it to the user, and wait for them to approve it.');
+}
+
 const zone = lib.zoneOf(config, rel);
 if (zone) {
-  // 3. The zone's rules must have been read in this session before code in it changes.
+  // 5. The zone's rules must have been read in this session before code in it changes.
   if (zone.requiredSkill && !state.skills.includes(zone.requiredSkill)) {
     enforce('skills',
       `Load the "${zone.requiredSkill}" skill before editing ${zone.name} code (${rel}).\n` +
-      `Invoke it with the Skill tool, follow it, then retry the edit.`);
+      'Invoke it with the Skill tool, follow it, then retry the edit.');
   }
 
-  // 4. Test first: behaviour changes need a test already in the working tree.
+  const production = !lib.isTest(zone, rel);
+  const git = lib.isGitRepo();
+
+  // 6. Test first: behaviour changes need a test already declared in the working tree.
   if (lib.isTddProtected(zone, rel)) {
-    if (!lib.isGitRepo()) {
+    if (!git) {
       enforce('tdd', `Cannot check test-first for ${rel}: the project is not a git repository.`);
-    } else {
-      if (!lib.hasNewTest(zone)) {
-        enforce('tdd',
-          `${rel} holds behaviour, and the uncommitted work declares no new ${zone.name} test yet (an empty test file does not count).\n` +
-          'Write the failing test first (named as a readable specification), run it and watch it fail, ' +
-          'then make this edit. If this is a refactor with no behaviour change, say so to the user and ask ' +
-          'how to proceed; do not work around this check.');
-      }
+    } else if (!lib.hasNewTest(zone)) {
+      enforce('tdd',
+        `${rel} holds behaviour, and the uncommitted work declares no new ${zone.name} test yet (an empty test file does not count).\n` +
+        'Write the failing test first (named as a readable specification), run it and watch it fail, ' +
+        'then make this edit. If this is a refactor with no behaviour change, say so to the user and ask ' +
+        'how to proceed; do not work around this check.');
+    }
+  }
+
+  // 7. Past a certain size, a change needs a plan the user approved before the code is written.
+  if (production && git && lib.mode(config, 'plan') !== 'off' && config.plan) {
+    const files = lib.changedFiles();
+    const size = checks.productionAdded(config, files, lib.addedLines(files));
+    if (size >= config.plan.requiredFromLines && !checks.approvedPlan(config, files)) {
+      enforce('plan',
+        `This change already adds ${size} lines of production code and there is no approved plan for it.\n` +
+        `Stop coding. Write the plan under ${plansDir}/ (acceptance criteria, data model, API contract) with ` +
+        '"Status: proposed", show it to the user, and continue only after they change it to "Status: approved".');
     }
   }
 }
