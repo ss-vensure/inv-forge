@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Domain: entities, value objects and business rules. No I/O, no framework, no package
+    references: it must be testable with nothing but the language. References no other layer.
+  -->
+
+</Project>

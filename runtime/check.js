@@ -3,6 +3,7 @@
 // The same checks the hooks run, for CI and for a manual run:
 //   node .claude/forge/check.js                 every zone's build and tests, plus the diff checks
 //   node .claude/forge/check.js --base origin/main   diff checks against a branch (use in pull requests)
+//   node .claude/forge/check.js --packet             also write the one-page review packet
 //   node .claude/forge/check.js --ci                 also run the commands that need a database or service
 //   node .claude/forge/check.js --out result.json    also write the result in a fixed format
 // Exit code 1 when a control in "block" mode fails. "warn" findings are printed and do not fail.
@@ -11,9 +12,16 @@ const fs = require('fs');
 const path = require('path');
 const lib = require('./lib');
 const checks = require('./checks');
+const rules = require('./rules');
+const risk = require('./risk');
+const packet = require('./packet');
 
 const args = process.argv.slice(2);
 const opt = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
+// --packet [file]: write the review packet (default: .claude/forge/.state/review-packet.md)
+const packetAt = args.indexOf('--packet');
+const packetFile = packetAt < 0 ? null
+  : path.resolve(lib.ROOT, args[packetAt + 1] && !args[packetAt + 1].startsWith('--') ? args[packetAt + 1] : '.claude/forge/.state/review-packet.md');
 const ci = args.includes('--ci'); // also run each zone's verifyCi commands
 const base = opt('--base');
 const outFile = opt('--out');
@@ -83,6 +91,12 @@ if (lib.mode(config, 'tdd') !== 'off') {
   record('tdd', missing.length === 0, missing.join('\n'));
 }
 
+// architecture: the whole project against its baseline, not only the diff.
+if (lib.mode(config, 'architecture') !== 'off') {
+  const groups = rules.newViolations(config, rules.allFiles());
+  record('architecture', groups.length === 0, rules.describe(groups));
+}
+
 // changeSize
 if (lib.mode(config, 'changeSize') !== 'off') {
   const added = checks.productionAdded(config, files, counts);
@@ -103,6 +117,16 @@ for (const f of findings) {
   console.log(`[${status}] ${f.control}${!f.ok && f.detail ? '\n' + f.detail.replace(/^/gm, '    ') : ''}`);
 }
 
+const riskReport = risk.classify(config, files, addedText, counts);
+console.log(`[risk] ${riskReport.tier.toUpperCase()}` + riskReport.files.filter((f) => f.tier !== 'low').slice(0, 15)
+  .map((f) => `\n    ${f.tier}: ${f.path} (${f.reasons.join('; ')})`).join(''));
+
+if (packetFile) {
+  fs.mkdirSync(path.dirname(packetFile), { recursive: true });
+  fs.writeFileSync(packetFile, packet.render({ config, base, files, counts, addedText, findings, risk: riskReport, ci }));
+  console.log(`Review packet written to ${lib.toPosix(path.relative(lib.ROOT, packetFile))}`);
+}
+
 if (outFile) {
   lib.writeJson(outFile, {
     schema: 1,
@@ -110,6 +134,7 @@ if (outFile) {
     ranAt: new Date().toISOString(),
     base: base || null,
     passed: !failed,
+    risk: { tier: riskReport.tier, files: riskReport.files.filter((f) => f.tier !== 'low').map((f) => ({ path: f.path, tier: f.tier, reasons: f.reasons })) },
     findings: findings.map((f) => ({ control: f.control, mode: f.mode, ok: f.ok, detail: f.detail || '' })),
   });
 }

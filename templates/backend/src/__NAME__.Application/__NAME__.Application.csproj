@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Application: use cases, the ports (interfaces) they need, and their request/response
+    records. Knows the Domain; does not know EF Core, ASP.NET or any other infrastructure.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\__NAME__.Domain\__NAME__.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

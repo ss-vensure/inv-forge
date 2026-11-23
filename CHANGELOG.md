@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0
+
+Structure and directed review.
+
+- New control `architecture`: structure rules checked after every edit, when a turn ends and in CI.
+  Backend: `layer-references`, `api-data-access`, `domain-purity`, `application-purity`, `query-in-loop`,
+  `dto-record`, `anonymous-response`. Frontend: `component-http`, `library-style-override`, `library-patched`,
+  `no-any`. Both: `file-size`.
+- Baseline (`arch-baseline.json`): existing violations are tolerated, new ones are refused, so the control
+  runs in `block` on legacy projects. `setup.js --baseline` re-records it; sessions are blocked from running it.
+- Risk classification of every change (high / medium / low), reported when a turn ends and in `check.js`.
+- Review packet: `check.js --packet`.
+- Backend scaffold: `setup.js --scaffold-backend <Name> [--efcore]`. Four layers, zero warnings, dead-code and
+  complexity analyzers; with `--efcore`, SQLite-backed endpoint tests and a query counter for N+1 tests.
+- Setup fills in verify commands for a zone that was configured before its code existed.
+
 ## 0.1.2
 
 Fixes from the first live session in a real project.

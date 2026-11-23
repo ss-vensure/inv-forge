@@ -28,6 +28,20 @@ start in `warn`). Pass `--preset new|existing` only if the user disagrees with t
 
 Read the whole report. It ends with `RESULT: ok` or `RESULT: failed`.
 
+### If the project has no backend yet
+
+Ask the user whether this app needs one. If it does, create it in four layers (Domain, Application,
+Infrastructure, Api) instead of writing it by hand:
+
+```bash
+node "{{FORGE_HOME}}/setup/setup.js" . --scaffold-backend Acme.Billing            # no database
+node "{{FORGE_HOME}}/setup/setup.js" . --scaffold-backend Acme.Billing --efcore   # EF Core + query counter
+```
+
+The name is the .NET root namespace; ask the user for it. The scaffold builds with zero warnings and its tests
+pass as generated: run `dotnet build` and `dotnet test` on the new solution and confirm before going on. It does
+not wire `npm run api`, the dev proxy or the Dockerfile; say so.
+
 ## 3. Tune it with the user
 
 Change settings only through the installer, and only with the user's explicit agreement for each one:
@@ -47,7 +61,10 @@ Go through these with them:
    behaviour really lives in this project.
 3. **Control modes.** For an existing project, name each control that is in `warn` and what has to be migrated
    before it can move to `block`. The user decides every mode; never lower one yourself.
-4. **CI.** If the report says CI does not run the forge checks, show `.claude/forge/ci-example.yml` and propose
+4. **Structure-rule baseline.** The report lists existing violations per rule. These are tolerated, and nothing
+   new is. Read the numbers to the user: they are the migration backlog. After code is migrated, the maintainer
+   shrinks the baseline with `--baseline`; never run that yourself to make a failing check pass.
+5. **CI.** If the report says CI does not run the forge checks, show `.claude/forge/ci-example.yml` and propose
    the exact step to add to the project's existing workflow. Add it only if the user agrees.
 
 ## 4. Confirm

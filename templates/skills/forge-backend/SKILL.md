@@ -47,6 +47,39 @@ that points outward to make something compile.
 - Pass the `CancellationToken` through every async call.
 - Schema changes are EF migrations, generated, never hand-edited after they have shipped.
 
+### Proving there is no N+1
+
+A static rule flags a query inside a loop as soon as you write it. That catches the usual shape, not every
+one, so any endpoint that returns a list also gets a query-count test. Projects scaffolded by inv-forge have
+`tests/*.Api.Tests/Support/QueryCounter.cs` and an `ApiFactory` that counts every SQL command:
+
+```csharp
+var few = await factory.Queries.CountAsync(() => client.GetAsync(url));   // with one row
+// ...add twenty more rows...
+var many = await factory.Queries.CountAsync(() => client.GetAsync(url));
+Assert.Equal(few, many);   // the number of queries must not grow with the data
+```
+
+In a project without that support folder, add the same interceptor to its test host
+(`options.AddInterceptors(counter)`) rather than skipping the test.
+
+## What the machine checks
+
+After every edit, when the turn ends and in CI, inv-forge checks these and names the rule it found broken:
+
+| Rule | Refuses |
+|---|---|
+| `layer-references` | a project or package reference that points outward |
+| `api-data-access` | `DbContext`, EF Core or `SaveChanges` in the Api layer (outside `Program.cs`) |
+| `domain-purity`, `application-purity` | framework or I/O namespaces in Domain or Application |
+| `query-in-loop` | an EF query or `SaveChanges` inside a loop |
+| `dto-record` | a `*Request`, `*Response` or `*Dto` declared as a class or struct |
+| `anonymous-response` | an endpoint returning `new { ... }` |
+| `file-size` | a source file over the line limit |
+
+Existing violations are recorded in a baseline; a file may never gain one. When a check fires, fix the code.
+Do not move the offending line somewhere the rule does not look, and do not restructure only to hide it.
+
 ## Tests
 
 Tests are what the human reviewer reads instead of the implementation, so they are the specification.

@@ -9,6 +9,8 @@
 
 const lib = require('../lib');
 const checks = require('../checks');
+const rules = require('../rules');
+const risk = require('../risk');
 
 const input = lib.readStdinJson();
 const config = lib.loadConfig();
@@ -29,6 +31,26 @@ if (verifyMode !== 'off' && zones.length && state.lastVerified !== fp) {
   if (!failed) state.lastVerified = fp;
   else if (verifyMode === 'block') failures.push(failed);
   else advisories.push('Verification is failing (control "verify" is in warn mode):\n' + failed);
+}
+
+// 1b. Structure rules on everything that changed (cheap, so it runs every time).
+const archMode = lib.mode(config, 'architecture');
+if (archMode !== 'off' && files.length) {
+  const groups = rules.newViolations(config, files.map((f) => f.path));
+  if (groups.length) {
+    const text = 'Structure rules broken by the uncommitted changes:\n\n' + rules.describe(groups);
+    if (archMode === 'block') failures.push(text); else advisories.push(text + '\n(control "architecture" is in warn mode)');
+  }
+}
+
+// 1c. High-risk files: the human reviews these in detail, so they must hear about them.
+if (files.length) {
+  const patch = checks.addedTextFromPatch(lib.git(['diff', '--unified=0', 'HEAD']));
+  const high = risk.classify(config, files, patch).files.filter((f) => f.tier === 'high');
+  if (high.length) {
+    advisories.push('This change touches HIGH-RISK areas. Tell the user these need their own detailed review:\n' +
+      high.map((f) => `- ${f.path} (${f.reasons.join('; ')})`).join('\n'));
+  }
 }
 
 // 2. Slice size. Advisory locally (Claude cannot commit on its own); CI enforces it per PR.

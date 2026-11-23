@@ -1,0 +1,8 @@
+# Limits for the code-metrics analyzers (see .editorconfig). Added by inv-forge.
+# A method over the limit is split by responsibility, not excused.
+
+# Cyclomatic complexity per method.
+CA1502(Method): 12
+
+# Class coupling per type.
+CA1506(Type): 40

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Infrastructure: the implementations of the Application's ports. Databases, external
+    services and anything else that does I/O lives here and nowhere else.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\__NAME__.Application\__NAME__.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.15" />
+  </ItemGroup>
+
+</Project>

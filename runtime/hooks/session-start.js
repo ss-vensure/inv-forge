@@ -28,7 +28,9 @@ out.push(`4. Work in vertical slices of at most ${config.changeSize.maxLines} ad
   'When a slice works, tell the user it is ready to commit before starting the next.');
 out.push('5. Before saying anything is done: superpowers:verification-before-completion. ' +
   'Report what you ran, what passed, and explicitly what you did NOT verify.');
-out.push('6. Never silence a check, skip a test, or edit .claude/forge. If a rule is in the way, stop and ask the user.');
+out.push('6. When a slice is ready for review, run `node .claude/forge/check.js --packet`, read the packet it writes, and give ' +
+  'it to the user with the "From the author" section completed truthfully. High-risk files get a detailed review by the user.');
+out.push('7. Never silence a check, skip a test, or edit .claude/forge. If a rule is in the way, stop and ask the user.');
 out.push('');
 out.push('If a skill named here (superpowers:*, the dotnet plugins, angular-developer) is not available in this session, ' +
   'say so to the user at once - the plugin is not installed and /forge-setup should be run again - and still follow ' +
@@ -45,13 +47,14 @@ out.push(`- skills: ${m('skills')} - the zone skill must be loaded before editin
 out.push(`- tdd: ${m('tdd')} - a test must change before behaviour code changes`);
 out.push(`- suppressions: ${m('suppressions')} - no pragma/NoWarn/eslint-disable/skipped tests/::ng-deep`);
 out.push(`- protected: ${m('protected')} - .claude/forge, hook wiring and vendor packages are read-only`);
+out.push(`- architecture: ${m('architecture')} - layers, no data access in the Api layer, no query in a loop, libraries used as shipped, file size (existing violations are in the baseline; adding one is refused)`);
 out.push(`- verify: ${m('verify')} - build and tests of the touched zone must pass before the turn ends`);
 out.push(`- changeSize: ${m('changeSize')} - slice size limit`);
 
 // Drift: a starter /upgrade can rewrite .claude/settings.json and drop some of the wiring.
 const settings = lib.readJson(path.join(lib.ROOT, '.claude', 'settings.json'), {});
 const wired = JSON.stringify(settings.hooks || {});
-const missing = ['pre-edit.js', 'pre-bash.js', 'skill-log.js', 'stop-verify.js'].filter((f) => !wired.includes(f));
+const missing = ['pre-edit.js', 'pre-bash.js', 'skill-log.js', 'post-edit.js', 'stop-verify.js'].filter((f) => !wired.includes(f));
 const lost = ['lib.js', 'check.js'].filter((f) => !fs.existsSync(path.join(lib.FORGE_DIR, f)));
 if (missing.length || lost.length) {
   out.push('');

@@ -1,0 +1,18 @@
+# Analyzer rules for everything under api/. Added by inv-forge.
+# These are warnings, and Directory.Build.props turns every warning into a build error.
+
+[*.cs]
+# Dead code: nothing unused stays in the codebase.
+dotnet_diagnostic.IDE0051.severity = warning   # unused private member
+dotnet_diagnostic.IDE0052.severity = warning   # private member assigned but never read
+dotnet_diagnostic.IDE0059.severity = warning   # value assigned but never used
+dotnet_diagnostic.IDE0060.severity = warning   # unused parameter
+dotnet_diagnostic.CS8019.severity = warning    # unnecessary using
+
+# Size and complexity (thresholds in CodeMetricsConfig.txt).
+dotnet_diagnostic.CA1502.severity = warning    # method too complex
+dotnet_diagnostic.CA1506.severity = warning    # type coupled to too many others
+
+# Async correctness.
+dotnet_diagnostic.CA2016.severity = warning    # forward the CancellationToken
+dotnet_diagnostic.CS4014.severity = warning    # call is not awaited

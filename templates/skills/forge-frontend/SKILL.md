@@ -43,6 +43,21 @@ The Syncfusion licence key never goes in the repository.
 - Release every subscription (`takeUntilDestroyed`, the `async` pipe, or signals).
 - Keep the accessibility the libraries give you: labels, roles, keyboard paths. Composing must not break them.
 
+## What the machine checks
+
+After every edit, when the turn ends and in CI, inv-forge checks these and names the rule it found broken:
+
+| Rule | Refuses |
+|---|---|
+| `component-http` | `HttpClient` in a component |
+| `library-style-override` | selectors on a library's internal classes, `!important`, `ViewEncapsulation.None` |
+| `library-patched` | `patch-package` in the project |
+| `no-any` | `any` in TypeScript |
+| `file-size` | a source file over the line limit |
+
+Existing violations are recorded in a baseline; a file may never gain one. Choosing a from-scratch component
+where a library one exists is not something a machine can see: that one is on you and on the reviewer.
+
 ## Tests
 
 Tests are what the human reviewer reads instead of the implementation, so they are the specification.

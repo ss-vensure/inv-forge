@@ -8,6 +8,9 @@
 //   node setup.js [projectDir] --preset new|existing
 //   node setup.js [projectDir] --set controls.tdd=warn --set changeSize.maxLines=300
 //   node setup.js [projectDir] --offline       skip anything that needs the network
+//   node setup.js [projectDir] --scaffold-backend Acme.Billing   create api/ in four layers (only if there is none)
+//                              --efcore        ...with EF Core, SQLite-backed endpoint tests and the query counter
+//   node setup.js [projectDir] --baseline     re-record today's structure-rule violations (after a migration)
 //
 // Everything it owns in the project lives in .claude/forge/ and .claude/skills/forge-*/.
 // In shared files (.claude/settings.json, CLAUDE.md, .gitignore) it only adds marked entries,
@@ -22,17 +25,20 @@ const FORGE_HOME = path.resolve(__dirname, '..');
 const VERSION = require(path.join(FORGE_HOME, 'package.json')).version;
 const PINS = require(path.join(FORGE_HOME, 'pins.json'));
 const MODES = ['off', 'warn', 'block'];
-const CONTROLS = ['skills', 'tdd', 'suppressions', 'protected', 'verify', 'changeSize'];
+const CONTROLS = ['skills', 'tdd', 'suppressions', 'protected', 'architecture', 'verify', 'changeSize'];
 
 // ---- arguments -------------------------------------------------------------
 
 const argv = process.argv.slice(2);
-const flags = { check: false, offline: false, preset: null, set: [] };
+const flags = { check: false, offline: false, baseline: false, preset: null, set: [] };
 let target = null;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--check') flags.check = true;
   else if (a === '--offline') flags.offline = true;
+  else if (a === '--baseline') flags.baseline = true;
+  else if (a === '--scaffold-backend') flags.scaffold = argv[++i];
+  else if (a === '--efcore') flags.efcore = true;
   else if (a === '--preset') flags.preset = argv[++i];
   else if (a === '--set') flags.set.push(argv[++i]);
   else if (a.startsWith('--')) fail(`Unknown option ${a}`);
@@ -178,6 +184,7 @@ function defaultConfig(d, preset) {
       tdd: strict ? 'block' : 'warn',
       suppressions: 'block',
       protected: 'block',
+      architecture: 'block', // safe on legacy code: the baseline allows what is already there
       verify: 'block',
       changeSize: strict ? 'block' : 'warn',
     },
@@ -185,6 +192,23 @@ function defaultConfig(d, preset) {
     ignore: ['**/*.md', '**/bin/**', '**/obj/**'],
     protected: ['.claude/forge/**', '.claude/settings.json', 'node_modules/**'],
     changeSize: { maxLines: 400 },
+    limits: { maxFileLines: 400 },
+    frontend: { libraryClassPrefixes: ['e-'] },
+    architecture: { disabledRules: [] },
+    risk: {
+      high: {
+        'database schema': ['**/Migrations/**'],
+        'authentication or authorization': ['**/*Auth*/**', '**/*Auth*.*', '**/auth/**', '**/Identity/**', '**/Access/**', '**/*Permission*', '**/*.guard.ts'],
+        'build, deployment or CI': ['.github/**', '.docker/**', '**/Dockerfile', '**/*.csproj', '**/Directory.*.props', 'package.json', 'angular.json'],
+        'runtime configuration': ['**/appsettings*.json', '**/Program.cs', 'public/config.json', 'src/app/app.config.ts'],
+        'inv-forge or Claude configuration': ['.claude/**'],
+      },
+      medium: {
+        'use cases and business rules': ['api/**/*.Application/**', 'api/**/*.Domain/**', 'api/**/*Service.cs'],
+        'data access': ['api/**/*.Infrastructure/**', 'api/**/*.Data/**'],
+        'frontend logic and HTTP': ['src/app/**/*.service.ts', 'src/app/**/*.store.ts', 'src/app/**/*.interceptor.ts'],
+      },
+    },
     plansDir: 'docs/forge/plans',
     verifyTimeoutSec: 600,
     maxStopBlocks: 3,
@@ -219,7 +243,10 @@ const FORGE_HOOKS = {
     { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: hookCmd('pre-edit.js') }] },
     { matcher: 'Bash', hooks: [{ type: 'command', command: hookCmd('pre-bash.js') }] },
   ],
-  PostToolUse: [{ matcher: 'Skill|Read', hooks: [{ type: 'command', command: hookCmd('skill-log.js') }] }],
+  PostToolUse: [
+    { matcher: 'Skill|Read', hooks: [{ type: 'command', command: hookCmd('skill-log.js') }] },
+    { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: hookCmd('post-edit.js') }] },
+  ],
   Stop: [{ hooks: [{ type: 'command', command: hookCmd('stop-verify.js'), timeout: 1800 }] }],
 };
 const isForgeGroup = (g) => ((g && g.hooks) || []).some((h) => /\.claude\/forge\//.test(h.command || ''));
@@ -265,7 +292,8 @@ function isInstalledHere(state, id) {
 }
 
 function claude(args) {
-  const r = cp.spawnSync('claude', args, { cwd: ROOT, shell: true, encoding: 'utf8', timeout: 300000 });
+  // One command string: every argument here is a fixed word or an id from pins.json.
+  const r = cp.spawnSync('claude ' + args.join(' '), { cwd: ROOT, shell: true, encoding: 'utf8', timeout: 300000 });
   return { ok: r.status === 0, text: ((r.stdout || '') + (r.stderr || '')).trim().split(/\r?\n/).pop() || '' };
 }
 
@@ -344,6 +372,38 @@ function vendorAngularSkill() {
   }
 }
 
+// ---- backend scaffold ------------------------------------------------------
+// Four layers, zero warnings, one working use case tested at both levels. It is the starting
+// structure, not sample code: the status endpoint is real and stays.
+
+function scaffoldBackend(name) {
+  if (!/^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)*$/.test(String(name))) {
+    fail('--scaffold-backend expects a .NET name such as Billing or Acme.Billing');
+  }
+  let hasProjects = false;
+  walk(path.join(ROOT, 'api'), (file) => { if (file.endsWith('.csproj')) hasProjects = true; });
+  if (hasProjects) fail('api/ already contains .NET projects. The scaffold only creates a backend where there is none.');
+  const raice = readJson(path.join(ROOT, 'raice.json'), {}) || {};
+  const pkg = readJson(path.join(ROOT, 'package.json'), {}) || {};
+  const slug = String((raice.project && raice.project.name) || pkg.name || name).toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+  let from = null;
+  const fill = (s) => s.split('__NAME__').join(name).split('__SLUG__').join(slug);
+  const created = [];
+  const visit = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { visit(full); continue; }
+      const rel = fill(path.relative(from, full));
+      writeText(path.join(ROOT, 'api', rel), fill(fs.readFileSync(full, 'utf8')));
+      created.push(posix(rel));
+    }
+  };
+  const visitFrom = (dir) => { from = dir; visit(dir); };
+  visitFrom(path.join(FORGE_HOME, 'templates', 'backend'));
+  if (flags.efcore) visitFrom(path.join(FORGE_HOME, 'templates', 'backend-efcore'));
+  return { name, slug, files: new Set(created).size, efcore: !!flags.efcore };
+}
+
 // ---- drift check -----------------------------------------------------------
 
 function drift(d) {
@@ -356,7 +416,8 @@ function drift(d) {
   });
   if (!exists('.claude', 'forge', 'config.json')) problems.push('missing .claude/forge/config.json');
   const wired = JSON.stringify((readJson(path.join(ROOT, '.claude', 'settings.json'), {}) || {}).hooks || {});
-  for (const f of ['session-start.js', 'pre-edit.js', 'pre-bash.js', 'skill-log.js', 'stop-verify.js']) {
+  if (!exists('.claude', 'forge', 'arch-baseline.json')) problems.push('missing .claude/forge/arch-baseline.json');
+  for (const f of ['session-start.js', 'pre-edit.js', 'pre-bash.js', 'skill-log.js', 'post-edit.js', 'stop-verify.js']) {
     if (!wired.includes(`.claude/forge/hooks/${f}`)) problems.push(`hook not wired in .claude/settings.json: ${f}`);
   }
   for (const s of ['forge-backend', 'forge-frontend']) {
@@ -378,6 +439,7 @@ function drift(d) {
 // ---- main ------------------------------------------------------------------
 
 if (!fs.existsSync(path.join(ROOT, 'package.json'))) fail(`${ROOT} has no package.json. Run this in the project root.`);
+const scaffolded = flags.scaffold && !flags.check ? scaffoldBackend(flags.scaffold) : null;
 const d = detect();
 if (!d.isGit) fail('The project is not a git repository. The controls compare against git, so run `git init` and commit first.');
 
@@ -399,9 +461,22 @@ copyDir(path.join(FORGE_HOME, 'runtime'), FORGE_DIR);
 // 2. config (the project's own values survive; only missing keys are added)
 const configFile = path.join(FORGE_DIR, 'config.json');
 const hadConfig = fs.existsSync(configFile);
-const config = mergeDefaults(defaultConfig(d, preset), readJson(configFile, undefined));
+const defaults = defaultConfig(d, preset);
+const config = mergeDefaults(defaults, readJson(configFile, undefined));
+// A zone created before its code existed has no verify commands yet: give it the detected ones.
+for (const [name, zone] of Object.entries(config.zones)) {
+  if (!zone.verify.length && defaults.zones[name]) zone.verify = defaults.zones[name].verify;
+}
 for (const a of flags.set) applySet(config, a);
 writeJson(configFile, config);
+
+// 2b. structure-rule baseline: recorded once, then only when the maintainer asks for it
+const baselineFile = path.join(FORGE_DIR, 'arch-baseline.json');
+const hadBaseline = fs.existsSync(baselineFile);
+if (!hadBaseline || flags.baseline) {
+  writeJson(baselineFile, require(path.join(FORGE_DIR, 'rules.js')).buildBaseline(config));
+}
+const baseline = readJson(baselineFile, {});
 
 // 3. skills
 for (const s of ['forge-backend', 'forge-frontend']) {
@@ -441,6 +516,7 @@ lines.push('');
 lines.push(`Preset: ${preset}${flags.preset ? '' : previous ? ' (kept from the previous install)' : ` (auto-detected from ${d.sourceFiles} source files)`}`);
 lines.push(`Frontend: ${d.hasFrontend ? 'Angular ' + d.angular : 'not found'}`);
 lines.push(`Backend:  ${d.hasBackend ? (d.solution || 'projects under api/') + (d.usesEfCore ? ', EF Core' : '') : 'not found (the 4-layer scaffold arrives in delivery 2)'}`);
+if (scaffolded) lines.push(`Scaffold: created ${scaffolded.files} files under api/ for ${scaffolded.name}, served at /${scaffolded.slug}/api${scaffolded.efcore ? ', with EF Core and the query counter' : ''}`);
 lines.push(`Angular skill: ${angular}`);
 lines.push('Plugins:');
 for (const p of plugins) lines.push(`  ${p}`);
@@ -448,6 +524,11 @@ lines.push(`Config: ${hadConfig ? 'kept the project\'s values, added any new key
 lines.push('');
 lines.push('Controls:');
 for (const c of CONTROLS) lines.push(`  ${c.padEnd(13)} ${config.controls[c]}`);
+lines.push('');
+const totals = Object.entries(baseline).map(([rule, perFile]) => [rule, Object.values(perFile).reduce((a, b) => a + b, 0)]).sort((a, b) => b[1] - a[1]);
+lines.push(`Structure-rule baseline (${!hadBaseline ? 'recorded now' : flags.baseline ? 're-recorded now' : 'kept'}): ` +
+  (totals.length ? 'existing violations that are tolerated until migrated' : 'clean, no existing violations'));
+for (const [rule, n] of totals) lines.push(`  ${rule.padEnd(24)} ${n}`);
 lines.push('');
 lines.push('Verify commands (run when a turn ends, only for the zone that was touched):');
 for (const [name, z] of Object.entries(config.zones)) {
