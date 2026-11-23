@@ -1,0 +1,33 @@
+{
+  "_comment": "Every external dependency inv-forge installs into a project. Bump these on purpose, in a reviewed commit.",
+  "angularSkill": {
+    "repo": "https://github.com/angular/skills",
+    "commit": "7c18abb053c2da4b5dbd54fccd0f89a538433555"
+  },
+  "marketplaces": {
+    "claude-plugins-official": { "source": { "source": "github", "repo": "anthropics/claude-plugins-official" } },
+    "dotnet-agent-skills": { "source": { "source": "github", "repo": "dotnet/skills" } }
+  },
+  "plugins": {
+    "always": {
+      "superpowers@claude-plugins-official": true
+    },
+    "backend": {
+      "dotnet@dotnet-agent-skills": true,
+      "dotnet-aspnetcore@dotnet-agent-skills": true,
+      "dotnet-test@dotnet-agent-skills": true
+    },
+    "efcore": {
+      "dotnet-data@dotnet-agent-skills": true
+    }
+  },
+  "permissions": [
+    "Bash(dotnet build:*)",
+    "Bash(dotnet test:*)",
+    "Bash(dotnet restore:*)",
+    "Bash(dotnet format:*)",
+    "Bash(dotnet ef:*)",
+    "Bash(npm run lint:*)",
+    "Bash(node .claude/forge/check.js:*)"
+  ]
+}

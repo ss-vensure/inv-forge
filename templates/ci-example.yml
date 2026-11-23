@@ -1,0 +1,29 @@
+# inv-forge: the CI gate. Hooks only act inside a Claude session; this is what stops everything else.
+#
+# This is an EXAMPLE, not an active workflow. Add the two forge steps to the workflow that already
+# builds and tests this project (it knows how to authenticate to GitHub Packages and start a database),
+# then require that job in the branch protection of the main branch.
+
+name: forge
+on:
+  pull_request:
+
+jobs:
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the diff checks compare against the base branch
+
+      # ... the project's own setup goes here: setup-node, setup-dotnet, registry auth, npm ci, services ...
+
+      - name: inv-forge checks
+        run: node .claude/forge/check.js --ci --base "origin/${{ github.base_ref }}" --out forge-result.json
+
+      - name: Keep the result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-result
+          path: forge-result.json

@@ -1,0 +1,12 @@
+{
+  "name": "inv-forge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Engineering toolkit for Innovation-owned apps: skills, hooks and CI gates.",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/",
+    "install-skill": "node install.js"
+  }
+}
