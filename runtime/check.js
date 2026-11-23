@@ -5,7 +5,6 @@
 //   node .claude/forge/check.js --base main     the same, on everything this branch adds to `main`
 //   node .claude/forge/check.js --packet        also write the one-page review packet
 //   node .claude/forge/check.js --audit         also look for vulnerable packages (needs the network)
-//   node .claude/forge/check.js --mutation      also run mutation testing (slow)
 //   node .claude/forge/check.js --ci            also run the commands that need a database or service
 //   node .claude/forge/check.js --out r.json    also write the result in a fixed format
 //   node .claude/forge/check.js --metrics       print the history of past runs and exit
@@ -171,17 +170,6 @@ if (on('audit')) {
     record('audit', runs.every((x) => x.ok), diffchecks.describeRuns(runs));
   } else if (commands.length) {
     notRun.push('vulnerable packages (run with --audit)');
-  }
-}
-
-// mutation: do the tests notice when the code is changed on purpose? Slow, so only on request.
-if (on('mutation')) {
-  const commands = (config.mutation && config.mutation.commands) || [];
-  if (has('--mutation') && commands.length) {
-    const runs = diffchecks.runCommands(config, commands);
-    record('mutation', runs.every((x) => x.ok), diffchecks.describeRuns(runs));
-  } else {
-    notRun.push(commands.length ? 'mutation testing (run with --mutation)' : 'mutation testing: no tool is configured (`mutation.commands`)');
   }
 }
 

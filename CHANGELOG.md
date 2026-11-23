@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Removed the `mutation` control, `check.js --mutation` and the Stryker detection: a run takes too long on a
+  real project to be used. Updating a project drops `mutation` from its `config.json`.
+
 ## 0.3.0
 
 Continuous quality, and a decision: the checks run locally only.

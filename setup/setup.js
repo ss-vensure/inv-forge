@@ -29,7 +29,9 @@ const VERSION = require(path.join(FORGE_HOME, 'package.json')).version;
 const PINS = require(path.join(FORGE_HOME, 'pins.json'));
 const MODES = ['off', 'warn', 'block'];
 const FORGE_SKILLS = ['forge-backend', 'forge-frontend', 'forge-review'];
-const CONTROLS = ['skills', 'plan', 'tdd', 'suppressions', 'security', 'protected', 'architecture', 'deadCode', 'verify', 'review', 'changeSize', 'audit', 'mutation'];
+const CONTROLS = ['skills', 'plan', 'tdd', 'suppressions', 'security', 'protected', 'architecture', 'deadCode', 'verify', 'review', 'changeSize', 'audit'];
+// Controls that existed in an earlier version. Their keys are dropped from a project's config on update.
+const RETIRED = ['mutation'];
 
 // ---- arguments -------------------------------------------------------------
 
@@ -149,9 +151,6 @@ function detect() {
   });
   // Optional tools the project may already have. inv-forge uses them; it does not install them.
   d.hasKnip = !!deps.knip;
-  d.hasStryker = !!deps['@stryker-mutator/core'];
-  d.hasDotnetStryker = ['dotnet-tools.json', '.config/dotnet-tools.json', 'api/dotnet-tools.json', 'api/.config/dotnet-tools.json']
-    .some((f) => /dotnet-stryker/.test(readText(path.join(ROOT, f)) || ''));
   return d;
 }
 
@@ -208,7 +207,6 @@ function defaultConfig(d, preset) {
       plan: strict ? 'block' : 'warn',
       review: strict ? 'block' : 'warn',
       audit: 'warn',         // runs only with check.js --audit
-      mutation: 'warn',      // runs only with check.js --mutation
     },
     plan: { requiredFromLines: 150, maxAgeDays: 14 },
     review: { requiredFromRisk: 'medium' },
@@ -217,13 +215,6 @@ function defaultConfig(d, preset) {
       commands: [
         ...(d.hasFrontend ? ['npm audit --omit=dev --audit-level=high'] : []),
         ...(d.solution ? [{ command: `dotnet list "${d.solution}" package --vulnerable --include-transitive`, failOn: 'has the following vulnerable packages' }] : []),
-      ],
-    },
-    // Stryker runs from each test project's folder. --break-at makes a low score fail the run.
-    mutation: {
-      commands: [
-        ...(d.hasDotnetStryker ? d.testProjects.map((p) => `cd "${path.posix.dirname(p)}" && dotnet stryker --break-at 60 --reporter cleartext`) : []),
-        ...(d.hasStryker ? ['npx stryker run'] : []),
       ],
     },
     zones,
@@ -584,8 +575,12 @@ for (const [name, zone] of Object.entries(config.zones)) {
   if (!zone.verify.length && defaults.zones[name]) zone.verify = defaults.zones[name].verify;
 }
 // The same for optional tools: an empty list picks up a tool that was installed since.
-for (const key of ['deadCode', 'audit', 'mutation']) {
+for (const key of ['deadCode', 'audit']) {
   if (!config[key].commands.length) config[key].commands = defaults[key].commands;
+}
+for (const key of RETIRED) {
+  delete config[key];
+  delete config.controls[key];
 }
 for (const a of flags.set) applySet(config, a);
 writeJson(configFile, config);
@@ -679,7 +674,6 @@ if (!d.starterSetUp) lines.push('  - raice.json not found: the starter\'s /setup
 if (plugins.some((p) => p.includes('NOT installed'))) lines.push('  - Some plugins are not installed (see above). Sessions will start without those skills until they are.');
 if (flags.ciExample) lines.push('  - A CI example was written to .claude/forge/ci-example.yml. Nothing runs in CI until its step is added to a workflow.');
 if (!config.deadCode.commands.length) lines.push('  - No unused-code tool found (knip). Leftovers in a change are still checked; unused files and exports are not.');
-if (!config.mutation.commands.length) lines.push('  - No mutation-testing tool found (Stryker). Nothing checks that the tests would notice a broken implementation.');
 lines.push('  - Restart the Claude session: hooks and plugins load when a session starts.');
 lines.push('  - Confirm the verify commands above pass today and need no external service (database, VPN).');
 console.log(lines.join('\n') + '\n\nRESULT: ok');

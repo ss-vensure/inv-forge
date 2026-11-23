@@ -66,9 +66,9 @@ Go through these with them:
 4. **Structure-rule baseline.** The report lists existing violations per rule. These are tolerated, and nothing
    new is. Read the numbers to the user: they are the migration backlog. After code is migrated, the maintainer
    shrinks the baseline with `--baseline`; never run that yourself to make a failing check pass.
-5. **Optional tools.** If the report says no unused-code or mutation-testing tool was found, tell the user what
-   that leaves unchecked. Installing knip or Stryker changes the project's dependencies: propose it, and do it
-   only if they agree. Run setup again afterwards so it picks the tool up.
+5. **Optional tools.** If the report says no unused-code tool was found, tell the user what that leaves
+   unchecked. Installing knip changes the project's dependencies: propose it, and do it only if they agree.
+   Run setup again afterwards so it picks the tool up.
 6. **Exceptions.** Granting one (`--except`), revoking one and re-recording the baseline are the maintainer's
    own commands; a session is blocked from running them. If a rule cannot be met, explain why and give the user
    the exact command to run, with a reason and the fewest files and days that will do.

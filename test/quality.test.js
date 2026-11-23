@@ -205,11 +205,19 @@ test('audit runs only when asked, and can fail on the output of a tool that exit
   assert.strictEqual(quiet.code, 0);
 });
 
-test('mutation testing runs only when asked and configured', () => {
+test('updating drops the keys of a control that was retired', () => {
   const root = makeProject();
-  install(root, '--set', `mutation.commands=${JSON.stringify([PASS])}`);
+  install(root);
+  const file = path.join(root, '.claude', 'forge', 'config.json');
+  const old = configOf(root);
+  old.controls.mutation = 'warn';
+  old.mutation = { commands: [PASS] };
+  fs.writeFileSync(file, JSON.stringify(old, null, 1));
+  setup(root);
+  const now = configOf(root);
+  assert.strictEqual(now.mutation, undefined);
+  assert.strictEqual(now.controls.mutation, undefined);
   assert.doesNotMatch(check(root).out, /mutation/);
-  assert.match(check(root, '--mutation').out, /\[pass\] mutation/);
 });
 
 test('metrics keep a local history of runs and show the migration backlog', () => {
@@ -225,7 +233,7 @@ test('metrics keep a local history of runs and show the migration backlog', () =
   assert.match(m, /passed 1, failed 1 \(50% pass\)/);
   assert.match(m, /controls that failed a run: security 1/);
   assert.match(m, /api-data-access\s+1 -> 1/);
-  assert.match(m, /Controls not in block mode: audit=warn, mutation=warn/);
+  assert.match(m, /Controls not in block mode: audit=warn$/m);
 });
 
 test('presets: a new project blocks on everything it can; an existing one starts gently', () => {

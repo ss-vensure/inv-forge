@@ -62,10 +62,9 @@ it is migrated. The maintainer sets the modes; a Claude session cannot edit them
 | `review` | From medium risk up, the change was reviewed by agents that did not write it (`forge-review`) | end of turn |
 | `changeSize` | A slice stays under the line limit | end of turn (advisory) |
 | `audit` | No known-vulnerable packages | `check.js --audit` |
-| `mutation` | The tests notice when the code is changed on purpose (Stryker) | `check.js --mutation` |
 
 `node .claude/forge/check.js` runs every check on the uncommitted work. `--base main` checks everything a branch
-adds, `--packet` writes the review packet, `--audit` and `--mutation` add the slow ones, `--ci` adds commands
+adds, `--packet` writes the review packet, `--audit` looks for vulnerable packages, `--ci` adds commands
 that need a database, `--out file.json` writes the result in a fixed format, `--metrics` shows the history.
 
 ### Existing code: the baseline
@@ -130,13 +129,11 @@ backend, and it does not change the Dockerfile: the starter owns that file and i
 
 ### Optional tools
 
-inv-forge uses these when the project already has them, and says so when it does not. It never installs them.
+inv-forge uses knip when the project already has it (`knip` in `package.json`) to find unused files, exports
+and dependencies in the frontend, and says so when it does not. It never installs it.
 
-| Tool | Used for | Detected from |
-|---|---|---|
-| knip | unused files, exports and dependencies in the frontend | `knip` in `package.json` |
-| dotnet-stryker | mutation testing of the backend | a .NET tool manifest listing `dotnet-stryker` |
-| Stryker (JS) | mutation testing of the frontend | `@stryker-mutator/core` in `package.json` |
+Mutation testing is deliberately not part of the toolkit: on a real project a run takes far longer than anyone
+will wait for, so the check would never be used. Whether a test is worth having is judged in review.
 
 ### What this does and does not guarantee
 
@@ -172,7 +169,7 @@ Projects record the version they have in `.claude/forge/forge.json`; `--check` r
 2. **Structure (0.2):** four-layer backend scaffold, structure rules with a baseline, N+1 static rule and query
    counter, library-override rules, risk classification, review packet, size and complexity limits.
 3. **Continuous quality (0.3):** exceptions, security, leftovers, approved plan, independent review, vulnerable
-   packages, mutation testing, metrics.
+   packages, metrics.
 
 Known gaps: a hand-built component where a Prismatic one exists is only caught by review; per-method
 complexity on the frontend needs ESLint, which the starter does not ship; the plugins from the .NET marketplace

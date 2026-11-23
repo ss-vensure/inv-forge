@@ -1,6 +1,3 @@
 # .NET build output
 bin/
 obj/
-
-# Mutation testing reports
-StrykerOutput/

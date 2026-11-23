@@ -61,7 +61,7 @@ out.push(`- plan: ${m('plan')} - an approved plan before a change grows past the
 out.push(`- security: ${m('security')} - no secrets; no real personal data in tests or fixtures`);
 out.push(`- deadCode: ${m('deadCode')} - no commented-out code or ownerless TODO in a change; unused-code tools when configured`);
 out.push(`- review: ${m('review')} - independent review (forge-review) from ${(config.review && config.review.requiredFromRisk) || 'medium'} risk up`);
-out.push(`- audit: ${m('audit')}, mutation: ${m('mutation')} - on request: check.js --audit, check.js --mutation`);
+out.push(`- audit: ${m('audit')} - vulnerable packages, on request: check.js --audit`);
 
 // Exceptions the maintainer has granted, and the ones that ran out.
 const exceptions = lib.loadExceptions();
