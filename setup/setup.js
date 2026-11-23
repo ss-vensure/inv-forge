@@ -246,6 +246,48 @@ function mergeSettings(settings, d) {
   return s;
 }
 
+// ---- plugins ---------------------------------------------------------------
+// Listing a plugin in enabledPlugins does not install it: a session then starts without those
+// skills. The Claude CLI installs it for this project; nothing here needs a login.
+
+const samePath = (a, b) => path.resolve(String(a)).toLowerCase() === path.resolve(String(b)).toLowerCase();
+
+function pluginState() {
+  const dir = path.join(os.homedir(), '.claude', 'plugins');
+  return {
+    marketplaces: readJson(path.join(dir, 'known_marketplaces.json'), {}) || {},
+    installed: (readJson(path.join(dir, 'installed_plugins.json'), {}) || {}).plugins || {},
+  };
+}
+
+function isInstalledHere(state, id) {
+  return (state.installed[id] || []).some((e) => e.scope === 'user' || (e.projectPath && samePath(e.projectPath, ROOT)));
+}
+
+function claude(args) {
+  const r = cp.spawnSync('claude', args, { cwd: ROOT, shell: true, encoding: 'utf8', timeout: 300000 });
+  return { ok: r.status === 0, text: ((r.stdout || '') + (r.stderr || '')).trim().split(/\r?\n/).pop() || '' };
+}
+
+function installPlugins(d) {
+  const ids = Object.keys(wantedPlugins(d));
+  let state = pluginState();
+  const missing = ids.filter((id) => !isInstalledHere(state, id));
+  if (!missing.length) return ids.map((id) => `${id}: installed`);
+  if (flags.offline) return missing.map((id) => `${id}: NOT installed (--offline)`);
+  if (!claude(['--version']).ok) return missing.map((id) => `${id}: NOT installed (the claude CLI is not on PATH)`);
+  for (const [name, m] of Object.entries(PINS.marketplaces)) {
+    if (!state.marketplaces[name]) claude(['plugin', 'marketplace', 'add', m.source.repo]);
+  }
+  const results = missing.map((id) => ({ id, r: claude(['plugin', 'install', id, '--scope', 'project']) }));
+  state = pluginState();
+  return ids.map((id) => {
+    if (isInstalledHere(state, id)) return `${id}: installed`;
+    const failed = results.find((x) => x.id === id);
+    return `${id}: NOT installed (${failed ? failed.r.text : 'unknown reason'})`;
+  });
+}
+
 // ---- CLAUDE.md block -------------------------------------------------------
 
 const BLOCK_START = '<!-- inv-forge:start (managed by /forge-setup; edit the source in inv-forge, not here) -->';
@@ -322,6 +364,12 @@ function drift(d) {
   }
   if (d.hasFrontend && !exists('.claude', 'skills', 'angular-developer', 'SKILL.md')) problems.push('missing skill angular-developer');
   if (!(readText(path.join(ROOT, 'CLAUDE.md')) || '').includes(BLOCK_END)) problems.push('CLAUDE.md has no inv-forge block');
+  if (!flags.offline) {
+    const state = pluginState();
+    for (const id of Object.keys(wantedPlugins(d))) {
+      if (!isInstalledHere(state, id)) problems.push(`plugin not installed on this machine: ${id}`);
+    }
+  }
   const installedVersion = (readJson(path.join(FORGE_DIR, 'forge.json'), {}) || {}).version;
   if (installedVersion && installedVersion !== VERSION) problems.push(`installed version ${installedVersion}, available ${VERSION}`);
   return problems;
@@ -361,7 +409,8 @@ for (const s of ['forge-backend', 'forge-frontend']) {
 }
 const angular = d.hasFrontend ? vendorAngularSkill() : 'not needed (no Angular app found)';
 
-// 4. settings.json, .gitignore, CLAUDE.md
+// 4. plugins first (the CLI rewrites settings.json), then settings.json, .gitignore, CLAUDE.md
+const plugins = installPlugins(d);
 const settingsFile = path.join(ROOT, '.claude', 'settings.json');
 writeJson(settingsFile, mergeSettings(readJson(settingsFile, {}), d));
 
@@ -393,6 +442,8 @@ lines.push(`Preset: ${preset}${flags.preset ? '' : previous ? ' (kept from the p
 lines.push(`Frontend: ${d.hasFrontend ? 'Angular ' + d.angular : 'not found'}`);
 lines.push(`Backend:  ${d.hasBackend ? (d.solution || 'projects under api/') + (d.usesEfCore ? ', EF Core' : '') : 'not found (the 4-layer scaffold arrives in delivery 2)'}`);
 lines.push(`Angular skill: ${angular}`);
+lines.push('Plugins:');
+for (const p of plugins) lines.push(`  ${p}`);
 lines.push(`Config: ${hadConfig ? 'kept the project\'s values, added any new keys' : 'created with defaults'}`);
 lines.push('');
 lines.push('Controls:');
@@ -407,6 +458,7 @@ for (const [name, z] of Object.entries(config.zones)) {
 lines.push('');
 lines.push('Needs a human:');
 if (!d.starterSetUp) lines.push('  - raice.json not found: the starter\'s /setup has not been run in this project.');
+if (plugins.some((p) => p.includes('NOT installed'))) lines.push('  - Some plugins are not installed (see above). Sessions will start without those skills until they are.');
 if (!d.ciRunsForge) lines.push('  - CI does not run the forge checks yet. See .claude/forge/ci-example.yml' + (d.workflows.length ? ` and add the step to ${d.workflows.join(', ')}.` : '.'));
 lines.push('  - Restart the Claude session: hooks and plugins load when a session starts.');
 lines.push('  - Confirm the verify commands above pass today and need no external service (database, VPN).');

@@ -196,6 +196,12 @@ test('protected: the forge, the hook wiring and vendor packages are read-only', 
   assert.strictEqual(bash('node .claude/forge/check.js; rm -rf .claude/forge'), 2);
   assert.strictEqual(bash('npm test'), 0);
   assert.strictEqual(bash('cat .claude/settings.json'), 0);
+  // Found in the first live session: a read-only command was blocked just for naming the folder.
+  assert.strictEqual(bash('tail -3 src/app/a.ts && grep -n maxLines .claude/forge/config.json 2>/dev/null'), 0);
+  assert.strictEqual(bash('git diff .claude/settings.json | head -20'), 0);
+  assert.strictEqual(bash('cat .claude/forge/config.json | tee .claude/forge/config.json'), 2);
+  assert.strictEqual(bash('grep x $(rm -rf .claude/forge)'), 2);
+  assert.strictEqual(bash('node -e "require(\'fs\').rmSync(\'.claude/forge\',{recursive:true})"'), 2);
 });
 
 test('files outside the project are ignored', () => {

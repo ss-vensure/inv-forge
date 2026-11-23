@@ -30,6 +30,10 @@ out.push('5. Before saying anything is done: superpowers:verification-before-com
   'Report what you ran, what passed, and explicitly what you did NOT verify.');
 out.push('6. Never silence a check, skip a test, or edit .claude/forge. If a rule is in the way, stop and ask the user.');
 out.push('');
+out.push('If a skill named here (superpowers:*, the dotnet plugins, angular-developer) is not available in this session, ' +
+  'say so to the user at once - the plugin is not installed and /forge-setup should be run again - and still follow ' +
+  'the method above. Never pretend to have used a skill you could not load.');
+out.push('');
 out.push('## Zones');
 for (const [name, z] of Object.entries(config.zones || {})) {
   out.push(`- ${name}: ${z.paths.join(', ')} -> load skill "${z.requiredSkill}" first` +

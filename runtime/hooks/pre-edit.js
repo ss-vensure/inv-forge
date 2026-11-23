@@ -76,7 +76,7 @@ if (zone) {
 lib.saveState(input.session_id, state);
 
 if (blocks.length) {
-  process.stderr.write('inv-forge blocked this edit:\n\n' + blocks.join('\n\n') + '\n');
+  process.stderr.write('inv-forge blocked this edit (a rule doing its job, not a malfunction):\n\n' + blocks.join('\n\n') + '\n');
   process.exit(2);
 }
 process.exit(0);
