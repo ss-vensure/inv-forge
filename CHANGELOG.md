@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Verify commands fall back to Edge when a Windows machine has no Chrome, so Karma tests can run.
+
 ## 0.1.0
 
 First version: the base.

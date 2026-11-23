@@ -216,9 +216,23 @@ function newSuppressions(before, after) {
 
 // ---- running commands ------------------------------------------------------
 
+// Karma looks for Chrome. On a Windows machine that only has Edge (also Chromium), point it there,
+// otherwise `npm test` fails for a reason that has nothing to do with the code.
+function browserEnv() {
+  if (process.env.CHROME_BIN || process.platform !== 'win32') return {};
+  const roots = [process.env.LOCALAPPDATA, process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)']].filter(Boolean);
+  const find = (suffix) => roots.map((r) => path.join(r, suffix)).find((p) => fs.existsSync(p));
+  if (find('Google\\Chrome\\Application\\chrome.exe')) return {};
+  const edge = find('Microsoft\\Edge\\Application\\msedge.exe');
+  return edge ? { CHROME_BIN: edge } : {};
+}
+
 function run(command, timeoutSec) {
   const started = Date.now();
-  const r = cp.spawnSync(command, { cwd: ROOT, shell: true, encoding: 'utf8', timeout: (timeoutSec || 600) * 1000, maxBuffer: 64 * 1024 * 1024 });
+  const r = cp.spawnSync(command, {
+    cwd: ROOT, shell: true, encoding: 'utf8', timeout: (timeoutSec || 600) * 1000, maxBuffer: 64 * 1024 * 1024,
+    env: Object.assign({}, process.env, browserEnv()),
+  });
   const output = ((r.stdout || '') + (r.stderr || '')).trim();
   const timedOut = !!(r.error && r.error.code === 'ETIMEDOUT');
   return {
