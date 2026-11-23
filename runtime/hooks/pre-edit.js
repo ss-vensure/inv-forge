@@ -61,10 +61,9 @@ if (zone) {
     if (!lib.isGitRepo()) {
       enforce('tdd', `Cannot check test-first for ${rel}: the project is not a git repository.`);
     } else {
-      const hasTest = lib.changedFiles().some((f) => lib.isTest(zone, f.path));
-      if (!hasTest) {
+      if (!lib.hasNewTest(zone)) {
         enforce('tdd',
-          `${rel} holds behaviour, and no ${zone.name} test has been added or changed yet.\n` +
+          `${rel} holds behaviour, and the uncommitted work declares no new ${zone.name} test yet (an empty test file does not count).\n` +
           'Write the failing test first (named as a readable specification), run it and watch it fail, ' +
           'then make this edit. If this is a refactor with no behaviour change, say so to the user and ask ' +
           'how to proceed; do not work around this check.');

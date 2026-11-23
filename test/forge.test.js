@@ -96,7 +96,12 @@ test('tdd: behaviour code needs a changed test first; components and docs do not
   write(root, 'src/app/core/rules.spec.ts', 'it("rejects a negative rule", () => {});\n');
   assert.strictEqual(edit(root, 'src/app/core/rules.ts').code, 0);
   assert.strictEqual(edit(root, 'api/src/Demo.Domain/Price.cs').code, 2, 'a frontend spec does not unlock the backend');
+  // Found in a live session: an empty test class used to unlock the edit.
   write(root, 'api/tests/Demo.Domain.Tests/PriceTests.cs', 'public class PriceTests {}\n');
+  const empty = edit(root, 'api/src/Demo.Domain/Price.cs');
+  assert.strictEqual(empty.code, 2, 'an empty test file is not a test');
+  assert.match(empty.err, /an empty test file does not count/);
+  write(root, 'api/tests/Demo.Domain.Tests/PriceTests.cs', 'public class PriceTests { [Fact] public void Given_a_negative_value_Then_it_is_rejected() {} }\n');
   assert.strictEqual(edit(root, 'api/src/Demo.Domain/Price.cs').code, 0);
 });
 

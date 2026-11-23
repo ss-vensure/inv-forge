@@ -39,7 +39,8 @@ if (archMode !== 'off' && files.length) {
   const groups = rules.newViolations(config, files.map((f) => f.path));
   if (groups.length) {
     const text = 'Structure rules broken by the uncommitted changes:\n\n' + rules.describe(groups);
-    if (archMode === 'block') failures.push(text); else advisories.push(text + '\n(control "architecture" is in warn mode)');
+    // Listed first: the build output that verification adds can be long.
+    if (archMode === 'block') failures.unshift(text); else advisories.push(text + '\n(control "architecture" is in warn mode)');
   }
 }
 

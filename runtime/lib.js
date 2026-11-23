@@ -181,6 +181,21 @@ function fingerprint(files) {
   return h.digest('hex');
 }
 
+// True when the uncommitted work declares at least one new test in the zone's tests.
+// An empty test file does not count as "the test came first".
+const TEST_DECLARATION = /\b(it|test)\s*\(|\[\s*(Fact|Theory|Test|TestMethod)\b/;
+
+function hasNewTest(zone) {
+  const tests = changedFiles().filter((f) => isTest(zone, f.path));
+  const tracked = tests.filter((f) => f.status !== '??').map((f) => f.path);
+  const patch = tracked.length ? git(['diff', '--unified=0', 'HEAD', '--', ...tracked]) || '' : '';
+  const added = patch.split('\n').filter((l) => l.startsWith('+') && !l.startsWith('+++')).join('\n');
+  if (TEST_DECLARATION.test(added)) return true;
+  return tests.filter((f) => f.status === '??').some((f) => {
+    try { return TEST_DECLARATION.test(fs.readFileSync(path.join(ROOT, f.path), 'utf8')); } catch (_) { return false; }
+  });
+}
+
 // ---- per-session state -----------------------------------------------------
 
 function stateFile(sessionId) {
@@ -233,7 +248,9 @@ function run(command, timeoutSec) {
     cwd: ROOT, shell: true, encoding: 'utf8', timeout: (timeoutSec || 600) * 1000, maxBuffer: 64 * 1024 * 1024,
     env: Object.assign({}, process.env, browserEnv()),
   });
-  const output = ((r.stdout || '') + (r.stderr || '')).trim();
+  // Terminal colour codes are noise once the output is quoted in a message or a file.
+  const colour = new RegExp(String.fromCharCode(27) + '\\[[0-9;]*[A-Za-z]', 'g');
+  const output = ((r.stdout || '') + (r.stderr || '')).replace(colour, '').trim();
   const timedOut = !!(r.error && r.error.code === 'ETIMEDOUT');
   return {
     command,
@@ -248,6 +265,6 @@ module.exports = {
   ROOT, FORGE_DIR, STATE_DIR, MODES, SUPPRESSION_PATTERNS,
   readStdinJson, readJson, writeJson, loadConfig, mode,
   toPosix, relPath, globToRegex, matchAny, zoneOf, isTest, isTddProtected,
-  git, isGitRepo, changedFiles, addedLines, fingerprint,
+  git, isGitRepo, changedFiles, addedLines, fingerprint, hasNewTest, TEST_DECLARATION,
   loadState, saveState, countSuppressions, newSuppressions, run,
 };

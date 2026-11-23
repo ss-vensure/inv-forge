@@ -84,8 +84,9 @@ if (lib.mode(config, 'tdd') !== 'off') {
     const z = Object.assign({ name }, zone);
     const inZone = files.filter((f) => lib.matchAny(f.path, z.paths));
     const behaviour = inZone.filter((f) => lib.isTddProtected(z, f.path));
-    if (behaviour.length && !inZone.some((f) => lib.isTest(z, f.path))) {
-      missing.push(`${name}: ${behaviour.length} behaviour file(s) changed and no test did (${behaviour[0].path}...)`);
+    const declaresTest = inZone.some((f) => lib.isTest(z, f.path) && lib.TEST_DECLARATION.test(addedText[f.path] || ''));
+    if (behaviour.length && !declaresTest) {
+      missing.push(`${name}: ${behaviour.length} behaviour file(s) changed and no test was added (${behaviour[0].path}...)`);
     }
   }
   record('tdd', missing.length === 0, missing.join('\n'));

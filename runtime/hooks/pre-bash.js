@@ -25,7 +25,7 @@ const guarded = /\.claude[\\/]+(forge\b|settings\.json)/;
 if (!guarded.test(command)) process.exit(0);
 
 const READ_ONLY = new RegExp('^(' + [
-  'cat', 'head', 'tail', 'grep', 'rg', 'ls', 'dir', 'wc', 'type', 'stat', 'file', 'jq', 'diff',
+  'cat', 'echo', 'head', 'tail', 'grep', 'rg', 'ls', 'dir', 'wc', 'type', 'stat', 'file', 'jq', 'diff',
   'git\\s+(status|diff|log|show|ls-files|blame)',
   'node\\s+["\']?(\\.[\\\\/])?\\.claude[\\\\/]forge[\\\\/]check\\.js',
 ].join('|') + ')(\\s|$)');

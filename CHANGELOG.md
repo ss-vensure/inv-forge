@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1
+
+Refinements from the live test of the structure rules (every hook fired with the right rule).
+
+- Test-first needs a test to be declared in the change: an empty test file no longer unlocks behaviour code.
+- When a turn is refused, the structure rules are listed before the build output.
+- Files in the Api layer are at least medium risk.
+- Terminal colour codes are stripped from reported command output.
+- The shell guard accepts `echo` next to a read-only command.
+
 ## 0.2.0
 
 Structure and directed review.

@@ -206,6 +206,7 @@ function defaultConfig(d, preset) {
       medium: {
         'use cases and business rules': ['api/**/*.Application/**', 'api/**/*.Domain/**', 'api/**/*Service.cs'],
         'data access': ['api/**/*.Infrastructure/**', 'api/**/*.Data/**'],
+        'endpoints and the API contract': ['api/**/*.Api/**'],
         'frontend logic and HTTP': ['src/app/**/*.service.ts', 'src/app/**/*.store.ts', 'src/app/**/*.interceptor.ts'],
       },
     },
