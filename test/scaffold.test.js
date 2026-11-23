@@ -28,7 +28,7 @@ test('scaffold creates four layers named after the project and served under its 
   const root = frontendOnlyProject();
   const r = setup(root, '--scaffold-backend', 'Acme.Billing');
   assert.strictEqual(r.code, 0, r.out);
-  assert.match(r.out, /Scaffold: created 18 files under api\/ for Acme\.Billing, served at \/billing-tool\/api/);
+  assert.match(r.out, /Scaffold: created 19 files under api\/ for Acme\.Billing, served at \/billing-tool\/api/);
   for (const layer of ['Domain', 'Application', 'Infrastructure', 'Api']) {
     assert.ok(fs.existsSync(path.join(root, `api/src/Acme.Billing.${layer}/Acme.Billing.${layer}.csproj`)), layer);
   }
@@ -55,7 +55,7 @@ test('scaffold with --efcore adds the DbContext and the query counter', () => {
   const root = frontendOnlyProject();
   const r = setup(root, '--scaffold-backend', 'Billing', '--efcore');
   assert.strictEqual(r.code, 0, r.out);
-  assert.match(r.out, /created 22 files.*with EF Core and the query counter/);
+  assert.match(r.out, /created 23 files.*with EF Core and the query counter/);
   assert.match(read(root, 'api/src/Billing.Infrastructure/Persistence/AppDbContext.cs'), /class AppDbContext/);
   assert.match(read(root, 'api/tests/Billing.Api.Tests/Support/QueryCounter.cs'), /class QueryCounter : DbCommandInterceptor/);
   assert.match(read(root, 'api/src/Billing.Infrastructure/Billing.Infrastructure.csproj'), /EntityFrameworkCore\.SqlServer/);
