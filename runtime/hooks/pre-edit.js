@@ -75,15 +75,18 @@ if (plansDir && rel.startsWith(plansDir + '/') && APPROVAL.test(after) && !APPRO
     'Save the plan with "Status: proposed", show it to the user, and wait for them to approve it.');
 }
 
+// 5. The skills that govern this file (ours and the official ones) must have been loaded in
+//    this session before it changes.
+const unread = lib.skillsFor(config, rel).filter((s) => !state.skills.includes(s));
+if (unread.length) {
+  enforce('skills',
+    `Load ${unread.map((s) => `"${s}"`).join(', ')} before editing ${rel}.\n` +
+    'Invoke each with the Skill tool, follow it, then retry the edit. If one of them does not exist in this ' +
+    'session, its plugin is not installed: stop and tell the user to run /forge-setup again.');
+}
+
 const zone = lib.zoneOf(config, rel);
 if (zone) {
-  // 5. The zone's rules must have been read in this session before code in it changes.
-  if (zone.requiredSkill && !state.skills.includes(zone.requiredSkill)) {
-    enforce('skills',
-      `Load the "${zone.requiredSkill}" skill before editing ${zone.name} code (${rel}).\n` +
-      'Invoke it with the Skill tool, follow it, then retry the edit.');
-  }
-
   const production = !lib.isTest(zone, rel);
   const git = lib.isGitRepo();
 

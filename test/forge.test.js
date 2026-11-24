@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const cp = require('child_process');
 
-const { FORGE, PASS, FAIL, write, git, makeProject, setup, install, hook, edit, loadSkill, settingsOf, configOf } = require('./helpers');
+const { FORGE, PASS, FAIL, write, git, makeProject, setup, install, hook, edit, loadSkill, loadZone, settingsOf, configOf } = require('./helpers');
 
 test('setup installs everything and keeps what the starter put there', () => {
   const root = makeProject();
@@ -77,25 +77,75 @@ test('invalid settings are refused', () => {
   assert.strictEqual(setup(root, '--set', 'controls.nope=off').code, 1);
 });
 
-test('skills: a zone cannot be edited until its skill is loaded', () => {
+test('skills: a file cannot be edited until our skill and the official ones for it are loaded', () => {
   const root = makeProject();
   install(root);
   const blocked = edit(root, 'src/app/people/people.component.ts');
   assert.strictEqual(blocked.code, 2);
-  assert.match(blocked.err, /forge-frontend/);
+  assert.match(blocked.err, /"forge-frontend", "angular-developer", "test-driven-development"/);
   loadSkill(root, 'forge-frontend');
+  const partly = edit(root, 'src/app/people/people.component.ts');
+  assert.strictEqual(partly.code, 2, 'our own skill is not enough');
+  assert.doesNotMatch(partly.err, /forge-frontend/);
+  loadSkill(root, 'angular-developer');
+  loadSkill(root, 'superpowers:test-driven-development'); // a plugin skill counts under its short name
   assert.strictEqual(edit(root, 'src/app/people/people.component.ts').code, 0);
-  assert.strictEqual(edit(root, 'api/src/Demo.Domain/Demo.Domain.csproj').code, 2, 'the other zone still needs its own skill');
+
+  const csproj = 'api/src/Demo.Domain/Demo.Domain.csproj';
+  assert.match(edit(root, csproj).err, /Load "forge-backend" before/, 'the other zone still needs its own skill');
   // Reading the SKILL.md counts as loading it.
   hook(root, 'skill-log.js', { tool_name: 'Read', tool_input: { file_path: path.join(root, '.claude', 'skills', 'forge-backend', 'SKILL.md') } });
-  assert.strictEqual(edit(root, 'api/src/Demo.Domain/Demo.Domain.csproj').code, 0);
+  assert.strictEqual(edit(root, csproj).code, 0);
+});
+
+test('skills: the official skill depends on what the file is', () => {
+  const root = makeProject();
+  install(root);
+  loadSkill(root, 'forge-backend');
+  loadSkill(root, 'superpowers:test-driven-development');
+  assert.match(edit(root, 'api/src/Demo.Api/Endpoints/PriceEndpoints.cs').err, /Load "dotnet-webapi" before/);
+  assert.match(edit(root, 'api/tests/Demo.Domain.Tests/PriceTests.cs').err, /Load "code-testing" before/);
+  assert.match(edit(root, 'docs/forge/plans/prices.md').err, /Load "brainstorming", "writing-plans" before/);
+  loadSkill(root, 'superpowers:brainstorming');
+  loadSkill(root, 'superpowers:writing-plans');
+  assert.strictEqual(edit(root, 'docs/forge/plans/prices.md').code, 0);
+});
+
+test('skills: production code is not presented as done before the finishing skill was loaded', () => {
+  const root = makeProject();
+  install(root);
+  write(root, 'src/app/people/people.component.ts', 'export class PeopleComponent {\n  readonly title = "People";\n}\n');
+  const fresh = { session_id: 's2' };
+  const r = hook(root, 'stop-verify.js', fresh);
+  assert.strictEqual(r.code, 2);
+  assert.match(r.err, /"verification-before-completion" was not loaded/);
+  hook(root, 'skill-log.js', Object.assign({ tool_name: 'Skill', tool_input: { skill: 'superpowers:verification-before-completion' } }, fresh));
+  assert.doesNotMatch(hook(root, 'stop-verify.js', fresh).err, /verification-before-completion/);
+});
+
+test('skills: updating a project installed before skill rules existed gives it the rules', () => {
+  const root = makeProject();
+  install(root);
+  const file = path.join(root, '.claude', 'forge', 'config.json');
+  const old = configOf(root);
+  delete old.skillRules;
+  delete old.method;
+  old.zones.frontend.requiredSkill = 'forge-frontend';
+  old.zones.frontend.alsoUse = ['the angular-developer skill'];
+  fs.writeFileSync(file, JSON.stringify(old, null, 1));
+  setup(root);
+  const now = configOf(root);
+  assert.strictEqual(now.zones.frontend.requiredSkill, undefined);
+  assert.strictEqual(now.zones.frontend.alsoUse, undefined);
+  assert.ok(now.skillRules.some((r) => r.skills.includes('angular-developer')));
+  assert.deepStrictEqual(now.method.beforeDone, ['verification-before-completion']);
 });
 
 test('tdd: behaviour code needs a changed test first; components and docs do not', () => {
   const root = makeProject();
   install(root);
-  loadSkill(root, 'forge-frontend');
-  loadSkill(root, 'forge-backend');
+  loadZone(root, 'frontend');
+  loadZone(root, 'backend');
   assert.strictEqual(edit(root, 'src/app/core/rules.ts').code, 2);
   assert.strictEqual(edit(root, 'api/src/Demo.Domain/Price.cs').code, 2);
   assert.strictEqual(edit(root, 'src/app/people/people.component.ts').code, 0);
@@ -115,13 +165,13 @@ test('tdd: behaviour code needs a changed test first; components and docs do not
 test('suppressions: adding one is blocked, editing next to an existing one is not', () => {
   const root = makeProject();
   install(root);
-  loadSkill(root, 'forge-frontend');
+  loadZone(root, 'frontend');
   const file = 'src/app/people/people.component.ts';
   for (const text of ['// eslint-disable-next-line', '// @ts-ignore', 'xit("later", () => {})', ':host ::ng-deep .e-grid { color: red }']) {
     assert.strictEqual(edit(root, file, { new_string: text }).code, 2, text);
   }
   assert.strictEqual(edit(root, file, { old_string: '// eslint-disable-next-line\nconst a = 1;', new_string: '// eslint-disable-next-line\nconst a = 2;' }).code, 0);
-  loadSkill(root, 'forge-backend');
+  loadZone(root, 'backend');
   assert.strictEqual(edit(root, 'api/src/Demo.Domain/Demo.Domain.csproj', { new_string: '<NoWarn>CS8618</NoWarn>' }).code, 2);
   const w = hook(root, 'pre-edit.js', { tool_name: 'Write', tool_input: { file_path: path.join(root, 'api/tests/Demo.Domain.Tests/T.cs'), content: '[Fact(Skip = "flaky")] public void T() {}' } });
   assert.strictEqual(w.code, 2);
@@ -158,7 +208,7 @@ test('files outside the project are ignored', () => {
 test('warn mode never blocks an edit and is reported once when the turn ends', () => {
   const root = makeProject();
   install(root, '--set', 'controls.tdd=warn');
-  loadSkill(root, 'forge-frontend');
+  loadZone(root, 'frontend');
   assert.strictEqual(edit(root, 'src/app/core/rules.ts').code, 0);
   write(root, 'src/app/core/rules.ts', 'export const rule = 2;\n');
   const first = hook(root, 'stop-verify.js', {});

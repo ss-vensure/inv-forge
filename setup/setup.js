@@ -156,6 +156,28 @@ function detect() {
 
 // ---- default configuration -------------------------------------------------
 
+const PLANS_DIR = 'docs/forge/plans';
+
+// Which skills must be loaded before which files change. Ours carry the house rules; the official ones
+// (Superpowers, the .NET plugins, Angular) carry the method and the framework. Names are the skill names
+// as the plugins ship them; a session may invoke them as plugin:skill.
+function defaultSkillRules(d, zones) {
+  const rules = [];
+  if (zones.backend) {
+    rules.push({ paths: ['api/**'], skills: ['forge-backend', 'test-driven-development'], why: 'our backend rules; test first' });
+    rules.push({ paths: ['api/**/*.Api/**', 'api/**/*Endpoints.cs', 'api/**/*Controller.cs'], skills: ['dotnet-webapi'], why: 'official ASP.NET Core API guidance' });
+    rules.push({ paths: zones.backend.tests, skills: ['code-testing'], why: 'official .NET testing guidance' });
+    if (d.usesEfCore) {
+      rules.push({ paths: ['api/**/*.Infrastructure/**', 'api/**/*DbContext.cs', 'api/**/*Repository.cs'], skills: ['optimizing-ef-core-queries'], why: 'official EF Core guidance' });
+    }
+  }
+  if (zones.frontend) {
+    rules.push({ paths: ['src/**'], skills: ['forge-frontend', 'angular-developer', 'test-driven-development'], why: 'our frontend rules; official Angular guidance; test first' });
+  }
+  rules.push({ paths: [PLANS_DIR + '/**'], skills: ['brainstorming', 'writing-plans'], why: 'a plan starts from a design the user agreed to' });
+  return rules;
+}
+
 function defaultConfig(d, preset) {
   const strict = preset === 'new';
   const zones = {};
@@ -167,8 +189,6 @@ function defaultConfig(d, preset) {
     zones.backend = {
       paths: ['api/**'],
       tests: ['api/**/*Tests/**', 'api/**/tests/**'],
-      requiredSkill: 'forge-backend',
-      alsoUse: ['the dotnet, dotnet-aspnetcore and dotnet-test plugin skills' + (d.usesEfCore ? ', and dotnet-data for EF Core' : '')],
       tdd: {
         protected: ['api/**/*.Domain/**/*.cs', 'api/**/*.Application/**/*.cs', 'api/**/*Service.cs'],
         exempt: ['**/Migrations/**'],
@@ -183,8 +203,6 @@ function defaultConfig(d, preset) {
     zones.frontend = {
       paths: ['src/**'],
       tests: ['src/**/*.spec.ts'],
-      requiredSkill: 'forge-frontend',
-      alsoUse: ['the angular-developer skill'],
       tdd: {
         protected: ['src/app/**/*.ts'],
         exempt: ['src/app/**/*.component.ts', 'src/app/**/*.routes.ts', 'src/app/**/*.config.ts', 'src/app/**/*.model.ts', 'src/app/**/*.types.ts'],
@@ -239,7 +257,9 @@ function defaultConfig(d, preset) {
         'frontend logic and HTTP': ['src/app/**/*.service.ts', 'src/app/**/*.store.ts', 'src/app/**/*.interceptor.ts'],
       },
     },
-    plansDir: 'docs/forge/plans',
+    plansDir: PLANS_DIR,
+    skillRules: defaultSkillRules(d, zones),
+    method: { beforeDone: ['verification-before-completion'] },
     verifyTimeoutSec: 600,
     maxStopBlocks: 3,
   };
@@ -577,6 +597,16 @@ for (const [name, zone] of Object.entries(config.zones)) {
 // The same for optional tools: an empty list picks up a tool that was installed since.
 for (const key of ['deadCode', 'audit']) {
   if (!config[key].commands.length) config[key].commands = defaults[key].commands;
+}
+// Skill rules: a project keeps its own, and gains any default rule for a skill it does not mention yet
+// (EF Core guidance once the project uses EF Core; everything, for a project installed before 0.4).
+const mentioned = new Set(config.skillRules.flatMap((r) => r.skills));
+for (const rule of defaults.skillRules) {
+  if (!rule.skills.some((s) => mentioned.has(s))) config.skillRules.push(rule);
+}
+for (const zone of Object.values(config.zones)) {
+  delete zone.requiredSkill;
+  delete zone.alsoUse;
 }
 for (const key of RETIRED) {
   delete config[key];

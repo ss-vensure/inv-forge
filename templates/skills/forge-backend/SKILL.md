@@ -9,9 +9,11 @@ These rules exist so the code stays cheap to review and to change. A human canno
 structure has to make wrong code hard to write and easy to spot. Where a rule and the existing code disagree,
 the rule wins for anything you add or touch; say what you found instead of copying the old pattern.
 
-Use the official .NET skills alongside this one: the `dotnet`, `dotnet-aspnetcore` and `dotnet-test` plugin
-skills, and `dotnet-data` whenever EF Core is involved. They cover the framework; this file covers how *we* build.
-Do not rely on memory for API details that those skills or the docs can confirm.
+Use the official .NET skills alongside this one. A hook asks for the main ones by file: `dotnet-webapi` for
+endpoints, `code-testing` for tests, `optimizing-ef-core-queries` for data access. The plugins have more
+(`run-tests`, `test-anti-patterns`, `assertion-quality`, `csharp-refactoring`); use them when they fit. They
+cover the framework; this file covers how *we* build. Do not rely on memory for API details that those skills
+or the docs can confirm.
 
 ## Layers (Clean Architecture)
 

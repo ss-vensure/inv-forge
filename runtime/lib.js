@@ -111,6 +111,16 @@ function zoneOf(config, rel) {
   return null;
 }
 
+// Every skill that must be loaded before `rel` changes: all the rules whose paths match it.
+function skillsFor(config, rel) {
+  const out = [];
+  for (const rule of (config && config.skillRules) || []) {
+    if (!matchAny(rel, rule.paths)) continue;
+    for (const s of rule.skills || []) if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
 function isTest(zone, rel) {
   return matchAny(rel, zone.tests);
 }
@@ -284,7 +294,7 @@ function run(command, timeoutSec) {
 module.exports = {
   ROOT, FORGE_DIR, STATE_DIR, MODES, SUPPRESSION_PATTERNS,
   readStdinJson, readJson, writeJson, loadConfig, mode,
-  toPosix, relPath, globToRegex, matchAny, zoneOf, isTest, isTddProtected,
+  toPosix, relPath, globToRegex, matchAny, zoneOf, skillsFor, isTest, isTddProtected,
   git, isGitRepo, changedFiles, addedLines, fingerprint, hasNewTest, TEST_DECLARATION,
   loadExceptions, isExpired, activeException,
   loadState, saveState, countSuppressions, newSuppressions, run,

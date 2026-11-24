@@ -50,7 +50,7 @@ it is migrated. The maintainer sets the modes; a Claude session cannot edit them
 
 | Control | Checks | When |
 |---|---|---|
-| `skills` | The zone's skill was loaded before its code is edited | on edit |
+| `skills` | The skills that govern a file, ours and the official ones, were loaded before it is edited; the finishing skill before the turn ends | on edit, end of turn |
 | `plan` | Past a size threshold, a plan the user marked `Status: approved` exists. Claude cannot write the approval | on edit |
 | `tdd` | A new test is declared before behaviour code changes | on edit |
 | `suppressions` | No `#pragma warning disable`, `NoWarn`, `eslint-disable`, `@ts-ignore`, skipped or focused tests, `::ng-deep` | on edit |
@@ -66,6 +66,29 @@ it is migrated. The maintainer sets the modes; a Claude session cannot edit them
 `node .claude/forge/check.js` runs every check on the uncommitted work. `--base main` checks everything a branch
 adds, `--packet` writes the review packet, `--audit` looks for vulnerable packages, `--ci` adds commands
 that need a database, `--out file.json` writes the result in a fixed format, `--metrics` shows the history.
+
+### Skills: which ones, and when
+
+Installing a skill does not make Claude read it. `skillRules` in `config.json` says which skills must be loaded
+before which files change, and a hook refuses the edit until they are. The defaults:
+
+| Files | Skills that must be loaded first | From |
+|---|---|---|
+| `api/**` | `forge-backend`, `test-driven-development` | ours, Superpowers |
+| the Api layer, endpoints, controllers | `dotnet-webapi` | .NET (`dotnet-aspnetcore`) |
+| backend tests | `code-testing` | .NET (`dotnet-test`) |
+| Infrastructure, `DbContext`, repositories (projects with EF Core) | `optimizing-ef-core-queries` | .NET (`dotnet-data`) |
+| `src/**` | `forge-frontend`, `angular-developer`, `test-driven-development` | ours, Angular, Superpowers |
+| a plan under `docs/forge/plans/` | `brainstorming`, `writing-plans` | Superpowers |
+| ending a turn that changed production code | `verification-before-completion` | Superpowers |
+
+A skill is asked for once per session and only when a file of its kind is touched, so a frontend-only session
+never loads the .NET ones. The maintainer edits the rules; a Claude session cannot.
+
+What this proves is that the skill was loaded, not that it was followed. Where following it can be checked,
+another control does it: `tdd` for test-first, `plan` for the approved plan, `verify` for the evidence.
+`systematic-debugging` is the method for bugs, but nothing can tell a bug fix from a feature, so it stays an
+instruction.
 
 ### Existing code: the baseline
 

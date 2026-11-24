@@ -43,14 +43,17 @@ out.push('If a skill named here (superpowers:*, the dotnet plugins, angular-deve
   'say so to the user at once - the plugin is not installed and /forge-setup should be run again - and still follow ' +
   'the method above. Never pretend to have used a skill you could not load.');
 out.push('');
-out.push('## Zones');
-for (const [name, z] of Object.entries(config.zones || {})) {
-  out.push(`- ${name}: ${z.paths.join(', ')} -> load skill "${z.requiredSkill}" first` +
-    (z.alsoUse && z.alsoUse.length ? `; also use ${z.alsoUse.join(', ')}` : ''));
+out.push('## Skills you must load before editing (checked by a hook, per file)');
+for (const rule of config.skillRules || []) {
+  out.push(`- ${rule.paths.join(', ')} -> ${rule.skills.join(', ')}${rule.why ? ` (${rule.why})` : ''}`);
 }
+const beforeDone = (config.method && config.method.beforeDone) || [];
+if (beforeDone.length) out.push(`- before ending a turn that changed production code -> ${beforeDone.join(', ')}`);
+out.push('A skill of a plugin is invoked by its full name (superpowers:brainstorming, dotnet-aspnetcore:dotnet-webapi). ' +
+  'Loading a skill is not the point; following it is. The other skills of those plugins are there to be used when they fit.');
 out.push('');
 out.push('## Controls (off / warn / block)');
-out.push(`- skills: ${m('skills')} - the zone skill must be loaded before editing that zone`);
+out.push(`- skills: ${m('skills')} - the skills listed above must be loaded before the edit, or before the turn ends`);
 out.push(`- tdd: ${m('tdd')} - a test must change before behaviour code changes`);
 out.push(`- suppressions: ${m('suppressions')} - no pragma/NoWarn/eslint-disable/skipped tests/::ng-deep`);
 out.push(`- protected: ${m('protected')} - .claude/forge, hook wiring and vendor packages are read-only`);

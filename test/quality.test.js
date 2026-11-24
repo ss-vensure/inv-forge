@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
-const { FORGE, PASS, write, git, makeProject, setup, install, hook, edit, loadSkill, configOf } = require('./helpers');
+const { FORGE, PASS, write, git, makeProject, setup, install, hook, edit, loadSkill, loadZone, configOf } = require('./helpers');
 
 const check = (root, ...args) => {
   const r = cp.spawnSync('node', [path.join(root, '.claude', 'forge', 'check.js'), ...args], { encoding: 'utf8' });
@@ -21,7 +21,7 @@ const commit = (root, message) => { git(root, 'add', '-A'); git(root, 'commit', 
 test('an exception lets one rule through on named files, and is reported, not hidden', () => {
   const root = makeProject();
   install(root);
-  loadSkill(root, 'forge-frontend');
+  loadZone(root, 'frontend');
   assert.strictEqual(edit(root, 'src/app/core/rules.ts').code, 2, 'test-first applies');
 
   const granted = setup(root, '--except', 'tdd', '--paths', 'src/app/core/**', '--reason', 'Generated mapping table, no behaviour to test', '--days', '7');
@@ -43,7 +43,7 @@ test('an exception lets one rule through on named files, and is reported, not hi
 test('an expired exception stops working, and one can be revoked', () => {
   const root = makeProject();
   install(root);
-  loadSkill(root, 'forge-frontend');
+  loadZone(root, 'frontend');
   setup(root, '--except', 'tdd', '--paths', 'src/app/core/**', '--reason', 'Temporary while the import is rebuilt');
   const [granted] = exceptionsOf(root);
   assert.strictEqual(edit(root, 'src/app/core/rules.ts').code, 0);
@@ -92,8 +92,8 @@ test('an exception can target a single structure rule', () => {
 test('secrets are refused in any file, real personal data in tests and fixtures', () => {
   const root = makeProject();
   install(root);
-  loadSkill(root, 'forge-frontend');
-  loadSkill(root, 'forge-backend');
+  loadZone(root, 'frontend');
+  loadZone(root, 'backend');
   const writing = (rel, content) => hook(root, 'pre-edit.js', { tool_name: 'Write', tool_input: { file_path: path.join(root, rel), content } });
 
   const key = writing('src/app/people/people.component.ts', 'const apiKey = "sk_live_51H8xQ2LkT9bVc3Nw7PzR4Y";\n');
@@ -148,7 +148,7 @@ test('configured unused-code tools run in check.js', () => {
 test('past the size threshold, code needs a plan the user approved', () => {
   const root = makeProject();
   install(root, '--set', 'plan.requiredFromLines=10');
-  loadSkill(root, 'forge-frontend');
+  loadZone(root, 'frontend');
   const component = 'src/app/people/people.component.ts';
   assert.strictEqual(edit(root, component).code, 0, 'small changes need no plan');
 
@@ -161,6 +161,9 @@ test('past the size threshold, code needs a plan the user approved', () => {
   // Claude may write the plan, but not its approval.
   const plan = 'docs/forge/plans/people-list.md';
   const writing = (content) => hook(root, 'pre-edit.js', { tool_name: 'Write', tool_input: { file_path: path.join(root, plan), content } });
+  assert.match(writing('# People list\n\nStatus: proposed\n').err, /Load "brainstorming", "writing-plans" before/);
+  loadSkill(root, 'superpowers:brainstorming');
+  loadSkill(root, 'superpowers:writing-plans');
   assert.strictEqual(writing('# People list\n\nStatus: proposed\n').code, 0);
   const forged = writing('# People list\n\nStatus: approved\n');
   assert.strictEqual(forged.code, 2);

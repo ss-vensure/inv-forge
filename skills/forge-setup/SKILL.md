@@ -61,6 +61,8 @@ Go through these with them:
    switched off, which is worse than not having it.
 2. **Test-first zones.** Show the `tdd.protected` and `tdd.exempt` globs of each zone and check they match where
    behaviour really lives in this project.
+   Do the same for `skillRules`: the paths decide which official skill (endpoints, tests, data access) is
+   required for which file, and a project with its own folder layout needs them adjusted.
 3. **Control modes.** For an existing project, name each control that is in `warn` and what has to be migrated
    before it can move to `block`. The user decides every mode; never lower one yourself.
 4. **Structure-rule baseline.** The report lists existing violations per rule. These are tolerated, and nothing

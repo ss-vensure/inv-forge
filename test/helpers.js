@@ -62,6 +62,8 @@ function install(root, ...extra) {
   assert.strictEqual(r.code, 0, r.out);
   git(root, 'add', '-A');
   git(root, 'commit', '-q', '-m', 'forge');
+  // The default test session (s1) may end a turn; the test of that rule uses another session.
+  loadSkill(root, 'superpowers:verification-before-completion');
   return r;
 }
 
@@ -74,7 +76,13 @@ function hook(root, name, input) {
 const edit = (root, rel, extra) => hook(root, 'pre-edit.js',
   { tool_name: 'Edit', tool_input: Object.assign({ file_path: path.join(root, rel), old_string: 'a', new_string: 'b' }, extra) });
 const loadSkill = (root, skill) => hook(root, 'skill-log.js', { tool_name: 'Skill', tool_input: { skill } });
+// Loads every skill a zone's files can require.
+const ZONE_SKILLS = {
+  frontend: ['forge-frontend', 'angular-developer', 'superpowers:test-driven-development'],
+  backend: ['forge-backend', 'superpowers:test-driven-development', 'dotnet-aspnetcore:dotnet-webapi', 'dotnet-test:code-testing'],
+};
+const loadZone = (root, zone) => ZONE_SKILLS[zone].forEach((s) => loadSkill(root, s));
 const settingsOf = (root) => JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8'));
 const configOf = (root) => JSON.parse(fs.readFileSync(path.join(root, '.claude', 'forge', 'config.json'), 'utf8'));
 
-module.exports = { FORGE, PASS, FAIL, write, git, makeProject, setup, install, hook, edit, loadSkill, settingsOf, configOf };
+module.exports = { FORGE, PASS, FAIL, write, git, makeProject, setup, install, hook, edit, loadSkill, loadZone, settingsOf, configOf };

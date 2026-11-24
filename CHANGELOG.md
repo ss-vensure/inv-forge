@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+The official skills are now required, not recommended.
+
+- `skillRules` in `config.json`: which skills must be loaded before which files change. A file can need
+  several: ours (`forge-backend`, `forge-frontend`), Superpowers (`test-driven-development`; `brainstorming`
+  and `writing-plans` to write a plan), .NET (`dotnet-webapi` for the Api layer, `code-testing` for tests,
+  `optimizing-ef-core-queries` for data access) and Angular (`angular-developer`).
+- `method.beforeDone`: a turn that changed production code cannot end before
+  `verification-before-completion` was loaded.
+- Replaces `requiredSkill` and `alsoUse` in each zone; updating a project converts its config.
+
 ## 0.3.1
 
 - Removed the `mutation` control, `check.js --mutation` and the Stryker detection: a run takes too long on a

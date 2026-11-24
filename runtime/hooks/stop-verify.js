@@ -80,6 +80,14 @@ if (production > 0 && risk.TIERS.indexOf(riskReport.tier) >= risk.TIERS.indexOf(
     'Load the "forge-review" skill and run it on the uncommitted changes, fix what it confirms, and include its result in your report.');
 }
 
+// 5. Work is not presented as done before the skills for finishing it were loaded.
+const beforeDone = ((config.method && config.method.beforeDone) || []).filter((s) => !state.skills.includes(s));
+if (production > 0 && beforeDone.length) {
+  report('skills', `Production code changed and ${beforeDone.map((s) => `"${s}"`).join(', ')} was not loaded in this session.
+` +
+    'Load it with the Skill tool and follow it before presenting this work as done.');
+}
+
 if (lib.mode(config, 'changeSize') !== 'off' && production > config.changeSize.maxLines) {
   advisories.push(`This slice has ${production} added lines of uncommitted production code; the limit is ` +
     `${config.changeSize.maxLines}. Tell the user it is time to review and commit this slice before continuing.`);
