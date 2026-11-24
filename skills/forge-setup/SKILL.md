@@ -91,6 +91,8 @@ Then tell the user, plainly:
 - what is **not** done or not verified (a command moved out of `verify`, a tool that is not installed, a skill
   or plugin that failed to download), and that edits made outside a Claude session are not checked unless
   someone runs `node .claude/forge/check.js`;
+- that there is nothing to remember afterwards: every request is routed by a hook (question, small change,
+  feature, bug, refactor) and the larger ones are built by the agents in `.claude/agents/`;
 - that they must **restart the Claude session** for the hooks and plugins to load, and review and commit the diff.
 
 ## After a starter /upgrade

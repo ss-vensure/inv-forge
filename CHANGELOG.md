@@ -11,6 +11,13 @@ The official skills are now required, not recommended.
 - `method.beforeDone`: a turn that changed production code cannot end before
   `verification-before-completion` was loaded.
 - Replaces `requiredSkill` and `alsoUse` in each zone; updating a project converts its config.
+- **Routing, with no command to remember.** A hook on every user message makes Claude declare the kind of
+  request (question, small, feature, bug, refactor) and follow its route.
+- **Agents** installed in `.claude/agents/`: `forge-backend-dev`, `forge-frontend-dev`, `forge-debugger`. They
+  start with our skill for their zone in context. Skills are tracked per agent, an agent cannot edit outside
+  its zone, and it cannot finish while the checks of its zone fail (`SubagentStop`).
+- Build and tests are remembered per zone, so work an agent already verified is not run again when the turn
+  ends.
 
 ## 0.3.1
 

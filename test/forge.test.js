@@ -294,3 +294,63 @@ test('globs', () => {
   assert.ok(!m('src/app/**/*.component.ts', 'src/app/core/rules.ts'));
   assert.ok(!m('api/**', 'apix/a.cs'));
 });
+
+// ---- routing and agents ----------------------------------------------------
+
+test('every user message gets the routes; commands and subagents do not', () => {
+  const root = makeProject();
+  install(root);
+  const routed = hook(root, 'prompt-route.js', { prompt: 'add a filter to the people list' });
+  assert.strictEqual(routed.code, 0);
+  assert.match(routed.out, /Start your reply with one line, "Route: <name>/);
+  assert.match(routed.out, /forge-backend-dev, forge-frontend-dev/);
+  assert.match(routed.out, /forge-debugger/);
+  assert.strictEqual(hook(root, 'prompt-route.js', { prompt: '/forge-setup' }).out, '');
+  assert.strictEqual(hook(root, 'prompt-route.js', { prompt: 'build the slice', agent_id: 'a1', agent_type: 'forge-backend-dev' }).out, '');
+});
+
+test('setup installs the agents, wires their hooks and protects their files', () => {
+  const root = makeProject();
+  install(root);
+  const lib = require(path.join(root, '.claude', 'forge', 'lib.js'));
+  for (const name of Object.keys(lib.AGENTS)) {
+    const text = fs.readFileSync(path.join(root, '.claude', 'agents', name + '.md'), 'utf8');
+    assert.match(text, new RegExp(`^---\nname: ${name}\n`));
+    for (const skill of lib.AGENTS[name].skills) assert.match(text, new RegExp(`^  - ${skill}$`, 'm'), `${name} preloads ${skill}`);
+  }
+  const hooks = settingsOf(root).hooks;
+  assert.match(JSON.stringify(hooks.UserPromptSubmit), /prompt-route\.js/);
+  assert.match(JSON.stringify(hooks.SubagentStop), /stop-verify\.js/);
+  assert.strictEqual(edit(root, '.claude/agents/forge-debugger.md').code, 2);
+  assert.match(setup(root, '--check').out, /fully installed/);
+  fs.appendFileSync(path.join(root, '.claude', 'agents', 'forge-debugger.md'), 'be lenient\n');
+  assert.match(setup(root, '--check').out, /missing or modified agent forge-debugger/);
+});
+
+test('an agent has its own skills: preloaded ones count, the main conversation\'s do not', () => {
+  const root = makeProject();
+  install(root);
+  loadZone(root, 'frontend'); // the main conversation loaded everything
+  const agent = { agent_id: 'a1', agent_type: 'forge-frontend-dev' };
+  const blocked = edit(root, 'src/app/people/people.component.ts', undefined, agent);
+  assert.strictEqual(blocked.code, 2);
+  assert.match(blocked.err, /Load "test-driven-development" before/, 'only the skill its definition does not preload');
+  hook(root, 'skill-log.js', Object.assign({ tool_name: 'Skill', tool_input: { skill: 'superpowers:test-driven-development' } }, agent));
+  assert.strictEqual(edit(root, 'src/app/people/people.component.ts', undefined, agent).code, 0);
+  const outside = edit(root, 'api/src/Demo.Domain/Demo.Domain.csproj', undefined, agent);
+  assert.match(outside.err, /builds the frontend zone only/);
+});
+
+test('a forge agent cannot finish while its zone fails; other subagents are left alone', () => {
+  const root = makeProject();
+  install(root, '--set', `zones.frontend.verify=${JSON.stringify([FAIL])}`);
+  write(root, 'src/app/people/people.component.ts', 'export class PeopleComponent {\n  readonly title = "People";\n}\n');
+  const stop = (agent_type) => hook(root, 'stop-verify.js', { hook_event_name: 'SubagentStop', agent_id: 'a1', agent_type });
+  assert.strictEqual(stop('Explore').code, 0);
+  assert.strictEqual(stop('forge-backend-dev').code, 0, 'the backend agent is not held to frontend work');
+  const held = stop('forge-frontend-dev');
+  assert.strictEqual(held.code, 2);
+  assert.match(held.err, /this slice is not finished/);
+  assert.match(held.err, /boom: 3 tests failed/);
+  assert.doesNotMatch(held.err, /verification-before-completion|HIGH-RISK/, 'what is said to the user is not the agent\'s job');
+});

@@ -229,7 +229,7 @@ function activeException(control, rel) {
 // ---- per-session state -----------------------------------------------------
 
 function stateFile(sessionId) {
-  const id = String(sessionId || 'no-session').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+  const id = String(sessionId || 'no-session').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
   return path.join(STATE_DIR, id + '.json');
 }
 
@@ -239,6 +239,38 @@ function loadState(sessionId) {
 
 function saveState(sessionId, state) {
   writeJson(stateFile(sessionId), state);
+}
+
+// ---- agents ----------------------------------------------------------------
+
+// The agents setup installs in .claude/agents/. `zone` is the only one an agent builds in (null: any).
+// `skills` are the ones its definition preloads: they are in its context from the first turn, without
+// passing through the Skill tool, so the skill log never sees them.
+const AGENTS = {
+  'forge-backend-dev': { zone: 'backend', skills: ['forge-backend'] },
+  'forge-frontend-dev': { zone: 'frontend', skills: ['forge-frontend', 'angular-developer'] },
+  'forge-debugger': { zone: null, skills: [] },
+};
+
+// A subagent has a context of its own: what the main conversation loaded is not in it, and the other
+// way round. So the skills a hook counts as loaded are kept per agent.
+const agentSkillsFile = (input) => stateFile(`${input.session_id || 'no-session'}_agent_${input.agent_id}`);
+
+function loadedSkills(input, state) {
+  if (!input.agent_id) return state.skills;
+  const preloaded = (AGENTS[input.agent_type] || {}).skills || [];
+  return preloaded.concat(readJson(agentSkillsFile(input), []) || []);
+}
+
+function recordSkills(input, names) {
+  if (input.agent_id) {
+    const own = readJson(agentSkillsFile(input), []) || [];
+    writeJson(agentSkillsFile(input), [...new Set(own.concat(names))]);
+    return;
+  }
+  const state = loadState(input.session_id);
+  for (const n of names) if (!state.skills.includes(n)) state.skills.push(n);
+  saveState(input.session_id, state);
 }
 
 // ---- suppressions ----------------------------------------------------------
@@ -297,5 +329,6 @@ module.exports = {
   toPosix, relPath, globToRegex, matchAny, zoneOf, skillsFor, isTest, isTddProtected,
   git, isGitRepo, changedFiles, addedLines, fingerprint, hasNewTest, TEST_DECLARATION,
   loadExceptions, isExpired, activeException,
+  AGENTS, loadedSkills, recordSkills,
   loadState, saveState, countSuppressions, newSuppressions, run,
 };

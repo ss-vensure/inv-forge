@@ -3,6 +3,7 @@
 // PostToolUse (Skill | Read). Records which skills this session has actually loaded, so
 // pre-edit.js can require a zone's skill before code in that zone changes.
 // Reading a skill's SKILL.md counts too: it is the same content by another route.
+// Inside a subagent the record is that agent's own: its context is not the main conversation's.
 
 const lib = require('../lib');
 
@@ -18,9 +19,5 @@ if (input.tool_name === 'Skill' && ti.skill) {
   if (m) names.push(m[1]);
 }
 
-if (names.length) {
-  const state = lib.loadState(input.session_id);
-  for (const n of names) if (!state.skills.includes(n)) state.skills.push(n);
-  lib.saveState(input.session_id, state);
-}
+if (names.length) lib.recordSkills(input, names);
 process.exit(0);

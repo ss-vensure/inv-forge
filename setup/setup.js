@@ -237,7 +237,7 @@ function defaultConfig(d, preset) {
     },
     zones,
     ignore: ['**/*.md', '**/bin/**', '**/obj/**'],
-    protected: ['.claude/forge/**', '.claude/settings.json', 'node_modules/**'],
+    protected: ['.claude/forge/**', '.claude/settings.json', AGENT_FILES, 'node_modules/**'],
     changeSize: { maxLines: 400 },
     limits: { maxFileLines: 400 },
     frontend: { libraryClassPrefixes: ['e-'] },
@@ -298,7 +298,17 @@ const FORGE_HOOKS = {
     { matcher: 'Edit|Write|MultiEdit', hooks: [{ type: 'command', command: hookCmd('post-edit.js') }] },
   ],
   Stop: [{ hooks: [{ type: 'command', command: hookCmd('stop-verify.js'), timeout: 1800 }] }],
+  SubagentStop: [{ hooks: [{ type: 'command', command: hookCmd('stop-verify.js'), timeout: 1800 }] }],
+  UserPromptSubmit: [{ hooks: [{ type: 'command', command: hookCmd('prompt-route.js') }] }],
 };
+const WIRED_HOOKS = ['session-start.js', 'pre-edit.js', 'pre-bash.js', 'skill-log.js', 'post-edit.js', 'stop-verify.js', 'prompt-route.js'];
+
+// The agents a routed request is delegated to, and the zone each one needs (null: any project).
+// Keep in step with AGENTS in runtime/lib.js; a test checks it.
+const FORGE_AGENTS = { 'forge-backend-dev': 'backend', 'forge-frontend-dev': 'frontend', 'forge-debugger': null };
+const AGENT_FILES = '.claude/agents/forge-*.md';
+const agentFile = (name) => path.join(ROOT, '.claude', 'agents', name + '.md');
+const wantedAgents = (zones) => Object.keys(FORGE_AGENTS).filter((a) => !FORGE_AGENTS[a] || zones[FORGE_AGENTS[a]]);
 const isForgeGroup = (g) => ((g && g.hooks) || []).some((h) => /\.claude\/forge\//.test(h.command || ''));
 
 function wantedPlugins(d) {
@@ -543,8 +553,12 @@ function drift(d) {
   if (!exists('.claude', 'forge', 'config.json')) problems.push('missing .claude/forge/config.json');
   const wired = JSON.stringify((readJson(path.join(ROOT, '.claude', 'settings.json'), {}) || {}).hooks || {});
   if (!exists('.claude', 'forge', 'arch-baseline.json')) problems.push('missing .claude/forge/arch-baseline.json');
-  for (const f of ['session-start.js', 'pre-edit.js', 'pre-bash.js', 'skill-log.js', 'post-edit.js', 'stop-verify.js']) {
+  for (const f of WIRED_HOOKS) {
     if (!wired.includes(`.claude/forge/hooks/${f}`)) problems.push(`hook not wired in .claude/settings.json: ${f}`);
+  }
+  const zones = (readJson(path.join(FORGE_DIR, 'config.json'), {}) || {}).zones || {};
+  for (const a of wantedAgents(zones)) {
+    if (readText(agentFile(a)) !== readText(path.join(FORGE_HOME, 'templates', 'agents', a + '.md'))) problems.push(`missing or modified agent ${a}`);
   }
   for (const s of FORGE_SKILLS) {
     if (!exists('.claude', 'skills', s, 'SKILL.md')) problems.push(`missing skill ${s}`);
@@ -608,6 +622,7 @@ for (const zone of Object.values(config.zones)) {
   delete zone.requiredSkill;
   delete zone.alsoUse;
 }
+if (!config.protected.includes(AGENT_FILES)) config.protected.push(AGENT_FILES);
 for (const key of RETIRED) {
   delete config[key];
   delete config.controls[key];
@@ -628,6 +643,13 @@ for (const s of FORGE_SKILLS) {
   copyDir(path.join(FORGE_HOME, 'templates', 'skills', s), path.join(ROOT, '.claude', 'skills', s));
 }
 const angular = d.hasFrontend ? vendorAngularSkill() : 'not needed (no Angular app found)';
+
+// 3b. agents: the ones this project has a zone for; one whose zone is gone is removed
+const agents = wantedAgents(config.zones);
+for (const a of Object.keys(FORGE_AGENTS)) {
+  if (agents.includes(a)) writeText(agentFile(a), readText(path.join(FORGE_HOME, 'templates', 'agents', a + '.md')));
+  else fs.rmSync(agentFile(a), { force: true });
+}
 
 // 4. plugins first (the CLI rewrites settings.json), then settings.json, .gitignore, CLAUDE.md
 const plugins = installPlugins(d);
@@ -680,6 +702,7 @@ const exceptionList = readJson(path.join(FORGE_DIR, 'exceptions.json'), []) || [
 const isoToday = new Date().toISOString().slice(0, 10);
 lines.push(`Exceptions: ${exceptionList.filter((e) => e.expires >= isoToday).length} active, ${exceptionList.filter((e) => e.expires < isoToday).length} expired`);
 lines.push(`Angular skill: ${angular}`);
+lines.push(`Agents: ${agents.join(', ')} (in .claude/agents/; requests are routed to them automatically)`);
 lines.push('Plugins:');
 for (const p of plugins) lines.push(`  ${p}`);
 lines.push(`Config: ${hadConfig ? 'kept the project\'s values, added any new keys' : 'created with defaults'}`);

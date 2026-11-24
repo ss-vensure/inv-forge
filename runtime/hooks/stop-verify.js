@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 'use strict';
-// Stop. Runs when Claude is about to end its turn.
+// Stop and SubagentStop. Runs when Claude is about to end its turn, or one of the forge agents its job.
+//   An agent is held to what it built: the cheap checks and the build and tests of its zone. What is
+//   said to the user (risk, review, the finishing skill) belongs to the main conversation.
 //   - "block" failures: exit 2, Claude has to keep working. After maxStopBlocks attempts in a
 //     row the turn is released with a loud message to the user, so a session can never loop forever.
 //   - advisories ("warn" findings, high-risk files, exceptions used, slice too large): reported
@@ -19,9 +21,14 @@ const input = lib.readStdinJson();
 const config = lib.loadConfig();
 if (!config || !lib.isGitRepo()) process.exit(0);
 
+const agent = input.hook_event_name === 'SubagentStop' ? lib.AGENTS[input.agent_type] : null;
+if (input.hook_event_name === 'SubagentStop' && !agent) process.exit(0); // not one of ours: nothing to hold it to
+
 const state = lib.loadState(input.session_id);
-const files = lib.changedFiles();
-const fp = lib.fingerprint(files);
+const inZone = (name) => (f) => lib.matchAny(f.path, (config.zones[name] || {}).paths);
+const all = lib.changedFiles();
+const files = agent && agent.zone ? all.filter(inZone(agent.zone)) : all;
+const fp = lib.fingerprint(all);
 const zones = checks.zonesTouched(config, files);
 
 const failures = [];
@@ -57,10 +64,30 @@ if (files.length) {
 }
 
 // 2. Build and tests of what was touched.
-if (lib.mode(config, 'verify') !== 'off' && zones.length && state.lastVerified !== fp) {
-  const failed = checks.describeFailures(checks.verify(config, zones));
-  if (!failed) state.lastVerified = fp;
-  else report('verify', lib.mode(config, 'verify') === 'block' ? failed : 'Verification is failing:\n' + failed);
+//    A zone is skipped when its files are byte-for-byte what already passed, whoever ran it.
+state.verified = state.verified || {};
+const zoneFp = (name) => lib.fingerprint(all.filter(inZone(name)));
+const stale = zones.filter((name) => state.verified[name] !== zoneFp(name));
+if (lib.mode(config, 'verify') !== 'off' && stale.length) {
+  const results = checks.verify(config, stale);
+  for (const name of stale) if (results.every((r) => r.zone !== name || r.ok)) state.verified[name] = zoneFp(name);
+  const failed = checks.describeFailures(results);
+  if (failed) report('verify', lib.mode(config, 'verify') === 'block' ? failed : 'Verification is failing:\n' + failed);
+}
+
+if (agent) {
+  const key = `agentStopBlocks_${input.agent_type}`;
+  if (!failures.length || (state[key] || 0) >= config.maxStopBlocks) {
+    state[key] = 0;
+    lib.saveState(input.session_id, state);
+    if (failures.length) process.stderr.write('inv-forge: this agent stopped with failing checks. Its work is NOT done.\n');
+    process.exit(0);
+  }
+  state[key] = (state[key] || 0) + 1;
+  lib.saveState(input.session_id, state);
+  process.stderr.write('inv-forge: this slice is not finished. Fix the cause (do not silence it), then finish again.\n\n' +
+    failures.join('\n\n') + '\n');
+  process.exit(2);
 }
 
 // 3. What the user has to hear about, whatever the modes.

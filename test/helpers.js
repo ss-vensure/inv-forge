@@ -73,8 +73,8 @@ function hook(root, name, input) {
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
 
-const edit = (root, rel, extra) => hook(root, 'pre-edit.js',
-  { tool_name: 'Edit', tool_input: Object.assign({ file_path: path.join(root, rel), old_string: 'a', new_string: 'b' }, extra) });
+const edit = (root, rel, extra, who) => hook(root, 'pre-edit.js',
+  Object.assign({ tool_name: 'Edit', tool_input: Object.assign({ file_path: path.join(root, rel), old_string: 'a', new_string: 'b' }, extra) }, who));
 const loadSkill = (root, skill) => hook(root, 'skill-log.js', { tool_name: 'Skill', tool_input: { skill } });
 // Loads every skill a zone's files can require.
 const ZONE_SKILLS = {

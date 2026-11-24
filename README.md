@@ -28,10 +28,34 @@ Without Claude: `node inv-forge/setup/setup.js <project>` installs, `--check` re
 
 | Piece | Where | Purpose |
 |---|---|---|
-| Runtime | `.claude/forge/` | Hooks, `check.js`, `config.json`, baseline, exceptions, version manifest |
+| Runtime | `.claude/forge/` | Hooks (including the router that runs on every message), `check.js`, `config.json`, baseline, exceptions, version manifest |
 | Our skills | `.claude/skills/forge-backend`, `forge-frontend`, `forge-review` | How we build, and how a change is reviewed |
+| Agents | `.claude/agents/forge-backend-dev`, `forge-frontend-dev`, `forge-debugger` | Who builds a slice or fixes a bug, with the skills already in context |
 | Official skills | plugins in `.claude/settings.json`, `angular-developer` vendored | Superpowers, .NET, Angular (versions in `pins.json` and `forge.json`) |
 | Wiring | marked entries in `.claude/settings.json`, `CLAUDE.md`, `.gitignore` | Survives re-runs; re-run after a starter `/upgrade` |
+
+## Nothing to remember
+
+After `/forge-setup` there is no command to learn. A hook runs on every message the user sends and makes
+Claude decide what kind of request it is, say so in the first line of its reply (`Route: bug - ...`), and
+follow that route:
+
+| Route | What happens |
+|---|---|
+| question | An answer. Nothing else starts. |
+| small | One zone, a few files: test first, change, verify. No plan, no agents. |
+| feature | Design with the user, a plan the user approves, each zone built by its agent, independent review. |
+| bug | The debugger agent: root cause with evidence, a test that fails because of it, then the fix. |
+| refactor | No behaviour change; tests green before and after. |
+
+The agents are how the official skills reach the code. Each one starts with our rules for its zone already in
+its context and loads the official skills for the files it touches; it works in a context of its own, so a
+long conversation does not wear its instructions away. The same hooks apply inside an agent, an agent cannot
+edit outside its zone, and it cannot finish while the build or the tests of its zone fail.
+
+Claude does the classifying, and could call a feature "small" to skip the plan. Two things answer that: the
+route is stated where the user sees it, and the `plan` control refuses edits past the size threshold whatever
+the route was called.
 
 ## It runs locally, on purpose
 
@@ -82,8 +106,8 @@ before which files change, and a hook refuses the edit until they are. The defau
 | a plan under `docs/forge/plans/` | `brainstorming`, `writing-plans` | Superpowers |
 | ending a turn that changed production code | `verification-before-completion` | Superpowers |
 
-A skill is asked for once per session and only when a file of its kind is touched, so a frontend-only session
-never loads the .NET ones. The maintainer edits the rules; a Claude session cannot.
+A skill is asked for once per conversation (and once per agent, whose context is its own) and only when a file
+of its kind is touched, so a frontend-only session never loads the .NET ones. The maintainer edits the rules; a Claude session cannot.
 
 What this proves is that the skill was loaded, not that it was followed. Where following it can be checked,
 another control does it: `tdd` for test-first, `plan` for the approved plan, `verify` for the evidence.
@@ -194,7 +218,9 @@ Projects record the version they have in `.claude/forge/forge.json`; `--check` r
 3. **Continuous quality (0.3):** exceptions, security, leftovers, approved plan, independent review, vulnerable
    packages, metrics.
 
-Known gaps: a hand-built component where a Prismatic one exists is only caught by review; per-method
+Known gaps: the agents preload only the skills that live in the project; whether a plugin skill can be
+preloaded by name is not documented by Claude Code, so they load those as their first step, and a hook holds
+them to it; a hand-built component where a Prismatic one exists is only caught by review; per-method
 complexity on the frontend needs ESLint, which the starter does not ship; the plugins from the .NET marketplace
 install at their latest version (the installed version is recorded, not pinned); the single-image Dockerfile
 for a project with a backend is still set up by hand.

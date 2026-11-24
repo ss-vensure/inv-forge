@@ -18,6 +18,8 @@ out.push(`# inv-forge ${manifest.version || ''} is active in this project`);
 out.push('This is an Innovation-owned app. The rules below are checked by hooks on this machine; they are not suggestions.');
 out.push('');
 out.push('## How work is done here');
+out.push('Every request is routed first: a note added to each user message lists the routes (question, small, feature, bug, ' +
+  'refactor). You declare the route in the first line of your reply and follow it. The user never has to ask for it.');
 out.push('1. New feature or behaviour change: use superpowers:brainstorming, then superpowers:writing-plans. ' +
   `Save the plan under ${config.plansDir}/ with a line "Status: proposed" and wait for the user to approve it before ` +
   'writing code. The plan states the acceptance criteria, the data model and the API contract. The user approves by ' +
@@ -80,7 +82,7 @@ if (exceptions.length) {
 // Drift: a starter /upgrade can rewrite .claude/settings.json and drop some of the wiring.
 const settings = lib.readJson(path.join(lib.ROOT, '.claude', 'settings.json'), {});
 const wired = JSON.stringify(settings.hooks || {});
-const missing = ['pre-edit.js', 'pre-bash.js', 'skill-log.js', 'post-edit.js', 'stop-verify.js'].filter((f) => !wired.includes(f));
+const missing = ['pre-edit.js', 'pre-bash.js', 'skill-log.js', 'post-edit.js', 'stop-verify.js', 'prompt-route.js'].filter((f) => !wired.includes(f));
 const lost = ['lib.js', 'check.js'].filter((f) => !fs.existsSync(path.join(lib.FORGE_DIR, f)));
 if (missing.length || lost.length) {
   out.push('');
