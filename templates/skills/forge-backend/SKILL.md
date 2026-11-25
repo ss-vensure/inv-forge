@@ -65,6 +65,14 @@ Assert.Equal(few, many);   // the number of queries must not grow with the data
 In a project without that support folder, add the same interceptor to its test host
 (`options.AddInterceptors(counter)`) rather than skipping the test.
 
+## Ask the tools, do not guess
+
+- If this session has a C# language server (the LSP tool answers for `.cs` files), use it: find references
+  before you rename, move or delete anything, and before you write a helper, look for the one that already
+  exists. Read its diagnostics after an edit instead of waiting for the build.
+- A refactor (no behaviour change) starts by loading `dotnet:csharp-refactoring`.
+- If neither is available, say so; do not present a guess about who calls what as a fact.
+
 ## What the machine checks
 
 After every edit, when the turn ends and in CI, inv-forge checks these and names the rule it found broken:

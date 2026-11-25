@@ -107,6 +107,29 @@ test('local install: moving a shared install to local takes our wiring out of th
   assert.strictEqual(setup(root, '--check').code, 0);
 });
 
+test('tools: the Angular MCP server is wired read-only, and a language server only where its program exists', () => {
+  const root = makeProject();
+  install(root);
+  const mcp = JSON.parse(fs.readFileSync(path.join(root, '.mcp.json'), 'utf8')).mcpServers['angular-cli'];
+  assert.deepStrictEqual(mcp.args.slice(-2), ['mcp', '--read-only']);
+  assert.ok(settingsOf(root).enabledMcpjsonServers.includes('angular-cli'));
+  fs.rmSync(path.join(root, '.mcp.json'));
+  assert.match(setup(root, '--check').out, /\.mcp\.json has no angular-cli server/);
+
+  // A machine that has the TypeScript language server but not the C# one.
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-bin-'));
+  for (const ext of ['', '.cmd']) fs.writeFileSync(path.join(bin, 'typescript-language-server' + ext), '');
+  const env = Object.assign({}, process.env, { PATH: bin, PATHEXT: '.CMD' });
+  const r = cp.spawnSync(process.execPath, [path.join(FORGE, 'setup', 'setup.js'), root, '--offline'], { encoding: 'utf8', env });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /typescript-language-server: found, plugin enabled/);
+  assert.match(r.stdout, /csharp-ls: NOT on this machine/);
+  assert.match(r.stdout, /dotnet tool install --global csharp-ls/);
+  const plugins = settingsOf(root).enabledPlugins;
+  assert.strictEqual(plugins['typescript-lsp@claude-plugins-official'], true);
+  assert.ok(!('csharp-lsp@claude-plugins-official' in plugins));
+});
+
 test('invalid settings are refused', () => {
   const root = makeProject();
   install(root);

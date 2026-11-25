@@ -12,7 +12,8 @@ Before your first edit, load these with the Skill tool and follow them:
 
 - `superpowers:test-driven-development`
 - the official .NET skill for what you are about to touch: `dotnet-aspnetcore:dotnet-webapi` for endpoints,
-  `dotnet-test:code-testing` for tests, `dotnet-data:optimizing-ef-core-queries` for data access.
+  `dotnet-test:code-testing` for tests, `dotnet-data:optimizing-ef-core-queries` for data access;
+- `dotnet:csharp-refactoring` when the slice is a refactor (no behaviour change).
 
 A hook refuses an edit until the skills for that file are loaded, and tells you which. If one does not exist
 in this session, stop and report it: do not work around it.

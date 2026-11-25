@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0
+
+Tools that answer instead of Claude guessing.
+
+- **Language servers.** Setup enables the official `csharp-lsp` and `typescript-lsp` plugins when `csharp-ls` /
+  `typescript-language-server` are on the machine, and says how to install them when they are not. The
+  skills tell Claude to find references before renaming, deleting or writing a duplicate.
+- **Angular MCP server** (`ng mcp --read-only`), for projects on Angular 20+: in `.mcp.json` for a shared
+  install, registered for the developer (`claude mcp add --scope local`) for a local one.
+- **.NET skills that were installed but never asked for:** `assertion-quality`, `test-anti-patterns` and
+  `test-gap-analysis` in the Tests lens of `forge-review`; `csharp-refactoring` on the refactor route. These
+  are instructions, not hook-enforced.
+
 ## 0.4.2
 
 - `forge-frontend` states that importing Syncfusion directly is allowed in a forge project and that it wins over

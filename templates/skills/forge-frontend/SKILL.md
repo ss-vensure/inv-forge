@@ -46,6 +46,16 @@ The Syncfusion licence key never goes in the repository.
 - Release every subscription (`takeUntilDestroyed`, the `async` pipe, or signals).
 - Keep the accessibility the libraries give you: labels, roles, keyboard paths. Composing must not break them.
 
+## Ask the tools, do not guess
+
+- If the `angular-cli` MCP server is connected, call its `get_best_practices` tool before your first Angular
+  edit in a conversation, and its documentation search instead of answering an Angular API question from
+  memory. It answers for the Angular version this project uses.
+- If this session has a TypeScript language server (the LSP tool answers for `.ts` files), use it: find
+  references before you rename, move or delete anything, and before you write a component, pipe or helper,
+  look for the one that already exists. Reuse is found, not remembered.
+- If neither is available, say so; do not present a guess as a fact.
+
 ## What the machine checks
 
 After every edit, when the turn ends and in CI, inv-forge checks these and names the rule it found broken:

@@ -127,6 +127,20 @@ another control does it: `tdd` for test-first, `plan` for the approved plan, `ve
 `systematic-debugging` is the method for bugs, but nothing can tell a bug fix from a feature, so it stays an
 instruction.
 
+### Tools that answer instead of a guess
+
+Setup also connects two kinds of tool, both official, so that Claude asks instead of remembering:
+
+- **Language servers** (`csharp-lsp`, `typescript-lsp` from Anthropic's marketplace): the compiler's own errors
+  after an edit, and "who uses this" before a rename, a deletion or a new helper that may already exist. Each
+  plugin is only a pointer to a program on the machine (`csharp-ls`, `typescript-language-server`), so setup
+  enables it only where that program is installed and prints the install command where it is not. inv-forge
+  never installs them: they are global tools.
+- **The Angular CLI's MCP server**, read-only tools only (`ng mcp --read-only`): best practices and
+  documentation for the Angular version the project uses. Angular marks it experimental.
+
+Nothing forces their use: the skills tell Claude to use them when present and to say so when they are not.
+
 ### Existing code: the baseline
 
 The structure rules run in `block` even on a project full of old code. At install, every existing violation is

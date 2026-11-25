@@ -314,11 +314,43 @@ const agentFile = (name) => path.join(ROOT, '.claude', 'agents', name + '.md');
 const wantedAgents = (zones) => Object.keys(FORGE_AGENTS).filter((a) => !FORGE_AGENTS[a] || zones[FORGE_AGENTS[a]]);
 const isForgeGroup = (g) => ((g && g.hooks) || []).some((h) => /\.claude\/forge\//.test(h.command || ''));
 
+// A language server gives Claude the compiler's own errors and "who uses this", instead of a guess.
+// Its plugin is only a pointer to a program on the machine, so it is enabled only where that program is.
+function onPath(bin) {
+  const exts = process.platform === 'win32' ? (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';') : [''];
+  return (process.env.PATH || '').split(path.delimiter).some((dir) => dir && exts.some((e) =>
+    fs.existsSync(path.join(dir, bin + e)) || fs.existsSync(path.join(dir, bin + e.toLowerCase()))));
+}
+const languageServers = (d) => PINS.languageServers
+  .filter((s) => (s.zone === 'backend' ? d.hasBackend : d.hasFrontend))
+  .map((s) => Object.assign({ found: onPath(s.binary) }, s));
+
 function wantedPlugins(d) {
   const plugins = Object.assign({}, PINS.plugins.always);
   if (d.hasBackend) Object.assign(plugins, PINS.plugins.backend);
   if (d.usesEfCore) Object.assign(plugins, PINS.plugins.efcore);
+  for (const s of languageServers(d)) if (s.found) plugins[s.plugin] = true;
   return plugins;
+}
+
+// The Angular CLI's own MCP server: best practices and documentation for the version this project uses,
+// read-only tools only. Shared wiring puts it in .mcp.json; local wiring registers it for this developer.
+const MCP = PINS.angularMcp;
+const wantsAngularMcp = (d) => d.hasFrontend && parseInt(String(d.angular).replace(/^\D+/, ''), 10) >= MCP.minAngular;
+function wireAngularMcp(d) {
+  if (!wantsAngularMcp(d)) return 'not needed (no Angular ' + MCP.minAngular + '+ app)';
+  if (WIRING === 'shared') {
+    const file = path.join(ROOT, '.mcp.json');
+    const json = readJson(file, {}) || {};
+    json.mcpServers = Object.assign({}, json.mcpServers, { [MCP.name]: MCP.server });
+    writeJson(file, json);
+    return `${MCP.name} in .mcp.json (read-only tools)`;
+  }
+  if (flags.offline) return `${MCP.name}: NOT connected (--offline)`;
+  if (!claude(['--version']).ok) return `${MCP.name}: NOT connected (the claude CLI is not on PATH)`;
+  if (claude(['mcp', 'get', MCP.name]).ok) return `${MCP.name} connected for this developer (read-only tools)`;
+  const r = claude(['mcp', 'add', '--scope', 'local', MCP.name, '--', MCP.server.command, ...MCP.server.args]);
+  return r.ok ? `${MCP.name} connected for this developer (read-only tools)` : `${MCP.name}: NOT connected (${r.text})`;
 }
 
 function mergeSettings(settings, d) {
@@ -333,6 +365,7 @@ function mergeSettings(settings, d) {
   s.permissions.allow = [...allow];
   s.extraKnownMarketplaces = Object.assign({}, s.extraKnownMarketplaces, PINS.marketplaces);
   s.enabledPlugins = Object.assign({}, s.enabledPlugins, wantedPlugins(d));
+  if (WIRING === 'shared' && wantsAngularMcp(d)) s.enabledMcpjsonServers = [...new Set([...(s.enabledMcpjsonServers || []), MCP.name])];
   return s;
 }
 
@@ -575,6 +608,7 @@ function drift(d) {
   }
   if (d.hasFrontend && !exists('.claude', 'skills', 'angular-developer', 'SKILL.md')) problems.push('missing skill angular-developer');
   if (WIRING === 'shared' && !(readText(path.join(ROOT, 'CLAUDE.md')) || '').includes(BLOCK_END)) problems.push('CLAUDE.md has no inv-forge block');
+  if (WIRING === 'shared' && wantsAngularMcp(d) && !((readJson(path.join(ROOT, '.mcp.json'), {}) || {}).mcpServers || {})[MCP.name]) problems.push(`.mcp.json has no ${MCP.name} server`);
   if (!flags.offline) {
     const state = pluginState();
     for (const id of Object.keys(wantedPlugins(d))) {
@@ -675,6 +709,7 @@ for (const a of Object.keys(FORGE_AGENTS)) {
 const plugins = installPlugins(d);
 const settingsFile = path.join(ROOT, '.claude', SETTINGS_NAME);
 writeJson(settingsFile, mergeSettings(readJson(settingsFile, {}), d));
+const angularMcp = wireAngularMcp(d);
 // One place only: hooks wired in both files would run twice.
 const otherFile = path.join(ROOT, '.claude', OTHER_SETTINGS);
 const other = readJson(otherFile, null);
@@ -755,6 +790,9 @@ const isoToday = new Date().toISOString().slice(0, 10);
 lines.push(`Exceptions: ${exceptionList.filter((e) => e.expires >= isoToday).length} active, ${exceptionList.filter((e) => e.expires < isoToday).length} expired`);
 lines.push(`Angular skill: ${angular}`);
 lines.push(`Agents: ${agents.join(', ')} (in .claude/agents/; requests are routed to them automatically)`);
+lines.push(`Angular MCP: ${angularMcp}`);
+lines.push('Language servers (the compiler\'s errors and find-references for Claude):');
+for (const s of languageServers(d)) lines.push(`  ${s.binary}: ${s.found ? 'found, plugin enabled' : 'NOT on this machine'}`);
 lines.push('Plugins:');
 for (const p of plugins) lines.push(`  ${p}`);
 lines.push(`Config: ${hadConfig ? 'kept the project\'s values, added any new keys' : 'created with defaults'}`);
@@ -779,6 +817,10 @@ if (!d.starterSetUp) lines.push('  - raice.json not found: the starter\'s /setup
 if (plugins.some((p) => p.includes('NOT installed'))) lines.push('  - Some plugins are not installed (see above). Sessions will start without those skills until they are.');
 if (flags.ciExample) lines.push('  - A CI example was written to .claude/forge/ci-example.yml. Nothing runs in CI until its step is added to a workflow.');
 if (!config.deadCode.commands.length) lines.push('  - No unused-code tool found (knip). Leftovers in a change are still checked; unused files and exports are not.');
+for (const s of languageServers(d)) {
+  if (!s.found) lines.push(`  - No ${s.binary} on this machine, so Claude works on ${s.zone} code without a language server. To add it: \`${s.install}\`, then run setup again.`);
+}
+if (angularMcp.includes('NOT connected')) lines.push('  - The Angular MCP server is not connected (see above): Angular questions are answered from the skill alone.');
 lines.push('  - Restart the Claude session: hooks and plugins load when a session starts.');
 lines.push('  - Confirm the verify commands above pass today and need no external service (database, VPN).');
 console.log(lines.join('\n') + '\n\nRESULT: ok');
