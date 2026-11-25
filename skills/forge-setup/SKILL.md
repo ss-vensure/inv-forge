@@ -26,6 +26,11 @@ It is safe to run again: it replaces its own runtime, keeps the project's `confi
 duplicates wiring. It auto-detects the preset (`new`: every control blocks; `existing`: `tdd` and `changeSize`
 start in `warn`). Pass `--preset new|existing` only if the user disagrees with the detection.
 
+If inv-forge is optional in this project (the team does not commit its wiring; the user says so, or
+`.claude/forge/forge.json` has `"wiring": "local"`), the install is local: add `--local` the first time. It then
+writes to `.claude/settings.local.json` and leaves `.claude/settings.json`, `CLAUDE.md` and `.gitignore` alone.
+Later runs remember it. Never switch a project between local and shared without the user asking.
+
 Read the whole report. It ends with `RESULT: ok` or `RESULT: failed`.
 
 ### If the project has no backend yet

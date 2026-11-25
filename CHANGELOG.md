@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1
+
+- `setup.js --local`: installs for one developer only, for a project where inv-forge is optional. Hooks and
+  plugins go to `.claude/settings.local.json`; `.claude/settings.json`, `CLAUDE.md` and `.gitignore` are not
+  touched; inv-forge's own files are ignored through `.git/info/exclude`. The choice is remembered, so later
+  updates and `--check` need no flag. `--shared` moves back. Moving either way takes the wiring out of the
+  other file.
+- The session-start warning and `--check` look at the wiring where it was installed; a local install was
+  reported as "partly uninstalled".
+
 ## 0.4.0
 
 The official skills are now required, not recommended.

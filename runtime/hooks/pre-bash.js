@@ -22,7 +22,7 @@ if (/setup\.js\b[^;&|]*--(baseline|except|revoke)\b/.test(command)) {
   process.exit(2);
 }
 
-const guarded = /\.claude[\\/]+(forge\b|settings\.json)/;
+const guarded = /\.claude[\\/]+(forge\b|settings(\.local)?\.json)/;
 if (!guarded.test(command)) process.exit(0);
 
 const READ_ONLY = new RegExp('^(' + [
@@ -38,7 +38,7 @@ const readOnly = !/[<>`]|\$\(/.test(plain) && segments.every((s) => READ_ONLY.te
 if (!readOnly) {
   process.stderr.write(
     'inv-forge blocked this command (this is the "protected" control working, not a malfunction): ' +
-    'it could change .claude/forge or the hook wiring in .claude/settings.json.\n' +
+    'it could change .claude/forge or the hook wiring in .claude/settings.json or settings.local.json.\n' +
     'Reading those files is fine (Read tool, or cat/grep/git diff on their own). Changing them is the ' +
     'maintainer\'s decision: stop and ask the user. The only forge command a session runs is ' +
     '`node .claude/forge/check.js`.\n');

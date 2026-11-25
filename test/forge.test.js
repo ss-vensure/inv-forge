@@ -70,6 +70,43 @@ test('a starter upgrade that rewrites settings and CLAUDE.md is detected and rep
   assert.deepStrictEqual(configOf(root).zones.backend.verify, [PASS], 'config survived');
 });
 
+test('local install: nothing the team commits is touched, and it stays local on update', () => {
+  const root = makeProject();
+  const before = ['.claude/settings.json', 'CLAUDE.md', '.gitignore'].map((f) => fs.readFileSync(path.join(root, f), 'utf8'));
+  const r = setup(root, '--local', '--preset', 'new');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /Wiring: local/);
+  const after = ['.claude/settings.json', 'CLAUDE.md', '.gitignore'].map((f) => fs.readFileSync(path.join(root, f), 'utf8'));
+  assert.deepStrictEqual(after, before, 'shared files unchanged');
+  assert.strictEqual(git(root, 'status', '--porcelain').trim(), '', 'nothing of inv-forge shows up in git');
+  const local = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.local.json'), 'utf8'));
+  assert.match(JSON.stringify(local.hooks), /prompt-route\.js/);
+  assert.ok(configOf(root).protected.includes('.claude/settings.local.json'));
+  assert.strictEqual(setup(root, '--check').code, 0, 'check looks at the local wiring');
+  assert.doesNotMatch(hook(root, 'session-start.js', {}).out, /partly uninstalled/);
+  // An update with no flag remembers the choice.
+  assert.strictEqual(setup(root).code, 0);
+  assert.deepStrictEqual(['.claude/settings.json', 'CLAUDE.md', '.gitignore'].map((f) => fs.readFileSync(path.join(root, f), 'utf8')), before);
+  assert.strictEqual(JSON.stringify(local.hooks), JSON.stringify(JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.local.json'), 'utf8')).hooks), 'no duplicates');
+});
+
+test('local install: moving a shared install to local takes our wiring out of the shared files', () => {
+  const root = makeProject();
+  install(root);
+  assert.strictEqual(setup(root, '--local').code, 0);
+  assert.doesNotMatch(JSON.stringify(settingsOf(root).hooks), /\.claude\/forge\//);
+  assert.match(JSON.stringify(settingsOf(root).hooks), /welcome\.js/, 'the starter\'s own hook stays');
+  const claude = fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8');
+  assert.doesNotMatch(claude, /inv-forge/);
+  assert.match(claude, /Starter guidance\./);
+  assert.strictEqual(setup(root, '--check').code, 0);
+  // And back.
+  assert.strictEqual(setup(root, '--shared').code, 0);
+  assert.match(JSON.stringify(settingsOf(root).hooks), /pre-edit\.js/);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, '.claude', 'settings.local.json'), 'utf8'), /\.claude\/forge\/hooks/);
+  assert.strictEqual(setup(root, '--check').code, 0);
+});
+
 test('invalid settings are refused', () => {
   const root = makeProject();
   install(root);

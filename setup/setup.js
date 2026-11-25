@@ -54,6 +54,8 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--revoke') flags.revoke = argv[++i];
   else if (a === '--exceptions') flags.exceptions = true;
   else if (a === '--ci-example') flags.ciExample = true;
+  else if (a === '--local') flags.local = true;
+  else if (a === '--shared') flags.shared = true;
   else if (a.startsWith('--')) fail(`Unknown option ${a}`);
   else target = a;
 }
@@ -307,6 +309,7 @@ const WIRED_HOOKS = ['session-start.js', 'pre-edit.js', 'pre-bash.js', 'skill-lo
 // Keep in step with AGENTS in runtime/lib.js; a test checks it.
 const FORGE_AGENTS = { 'forge-backend-dev': 'backend', 'forge-frontend-dev': 'frontend', 'forge-debugger': null };
 const AGENT_FILES = '.claude/agents/forge-*.md';
+const LOCAL_EXCLUDES = ['.claude/forge/', AGENT_FILES, '.claude/skills/forge-*/', '.claude/skills/angular-developer/', '.claude/settings.local.json'];
 const agentFile = (name) => path.join(ROOT, '.claude', 'agents', name + '.md');
 const wantedAgents = (zones) => Object.keys(FORGE_AGENTS).filter((a) => !FORGE_AGENTS[a] || zones[FORGE_AGENTS[a]]);
 const isForgeGroup = (g) => ((g && g.hooks) || []).some((h) => /\.claude\/forge\//.test(h.command || ''));
@@ -367,7 +370,7 @@ function installPlugins(d) {
   for (const [name, m] of Object.entries(PINS.marketplaces)) {
     if (!state.marketplaces[name]) claude(['plugin', 'marketplace', 'add', m.source.repo]);
   }
-  const results = missing.map((id) => ({ id, r: claude(['plugin', 'install', id, '--scope', 'project']) }));
+  const results = missing.map((id) => ({ id, r: claude(['plugin', 'install', id, '--scope', WIRING === 'local' ? 'local' : 'project']) }));
   state = pluginState();
   return ids.map((id) => {
     if (isInstalledHere(state, id)) return `${id}: installed`;
@@ -396,6 +399,13 @@ function claudeBlock() {
     '- `.claude/forge/config.json` holds each control\'s mode (off / warn / block). Only the maintainer changes it.',
     BLOCK_END,
   ].join('\n');
+}
+
+function removeBlock(text) {
+  const start = text.indexOf(BLOCK_START.slice(0, 20));
+  const end = text.indexOf(BLOCK_END);
+  if (start < 0 || end < start) return text;
+  return text.slice(0, start).replace(/\n+$/, '\n') + text.slice(end + BLOCK_END.length).replace(/^\n+/, '\n');
 }
 
 function upsertBlock(text, block) {
@@ -551,10 +561,10 @@ function drift(d) {
     else if (installed !== readText(file)) problems.push(`outdated or modified .claude/forge/${rel}`);
   });
   if (!exists('.claude', 'forge', 'config.json')) problems.push('missing .claude/forge/config.json');
-  const wired = JSON.stringify((readJson(path.join(ROOT, '.claude', 'settings.json'), {}) || {}).hooks || {});
+  const wired = JSON.stringify((readJson(path.join(ROOT, '.claude', SETTINGS_NAME), {}) || {}).hooks || {});
   if (!exists('.claude', 'forge', 'arch-baseline.json')) problems.push('missing .claude/forge/arch-baseline.json');
   for (const f of WIRED_HOOKS) {
-    if (!wired.includes(`.claude/forge/hooks/${f}`)) problems.push(`hook not wired in .claude/settings.json: ${f}`);
+    if (!wired.includes(`.claude/forge/hooks/${f}`)) problems.push(`hook not wired in .claude/${SETTINGS_NAME}: ${f}`);
   }
   const zones = (readJson(path.join(FORGE_DIR, 'config.json'), {}) || {}).zones || {};
   for (const a of wantedAgents(zones)) {
@@ -564,7 +574,7 @@ function drift(d) {
     if (!exists('.claude', 'skills', s, 'SKILL.md')) problems.push(`missing skill ${s}`);
   }
   if (d.hasFrontend && !exists('.claude', 'skills', 'angular-developer', 'SKILL.md')) problems.push('missing skill angular-developer');
-  if (!(readText(path.join(ROOT, 'CLAUDE.md')) || '').includes(BLOCK_END)) problems.push('CLAUDE.md has no inv-forge block');
+  if (WIRING === 'shared' && !(readText(path.join(ROOT, 'CLAUDE.md')) || '').includes(BLOCK_END)) problems.push('CLAUDE.md has no inv-forge block');
   if (!flags.offline) {
     const state = pluginState();
     for (const id of Object.keys(wantedPlugins(d))) {
@@ -584,14 +594,23 @@ const scaffolded = flags.scaffold && !flags.check ? scaffoldBackend(flags.scaffo
 const d = detect();
 if (!d.isGit) fail('The project is not a git repository. The controls compare against git, so run `git init` and commit first.');
 
+// Where the wiring lives. shared: the files the team commits (settings.json, CLAUDE.md, .gitignore).
+// local: this developer only (settings.local.json, .git/info/exclude), for a project where inv-forge is
+// optional. The choice is remembered, so updates and --check need no flag.
+const previous = readJson(path.join(FORGE_DIR, 'forge.json'), null);
+if (flags.local && flags.shared) fail('--local and --shared are opposites; pass one.');
+const WIRING = flags.local ? 'local' : flags.shared ? 'shared' : (previous && previous.wiring) || 'shared';
+const SETTINGS_NAME = WIRING === 'local' ? 'settings.local.json' : 'settings.json';
+const OTHER_SETTINGS = WIRING === 'local' ? 'settings.json' : 'settings.local.json';
+const LOCAL_SETTINGS = '.claude/settings.local.json';
+
 if (flags.check) {
   const problems = drift(d);
-  if (!problems.length) { console.log(`inv-forge ${VERSION} is fully installed.\n\nRESULT: ok`); process.exit(0); }
+  if (!problems.length) { console.log(`inv-forge ${VERSION} is fully installed (${WIRING} wiring).\n\nRESULT: ok`); process.exit(0); }
   console.log('inv-forge drift:\n- ' + problems.join('\n- ') + '\n\nRESULT: drift');
   process.exit(1);
 }
 
-const previous = readJson(path.join(FORGE_DIR, 'forge.json'), null);
 const preset = flags.preset || (previous && previous.preset) || (d.sourceFiles > 40 ? 'existing' : 'new');
 if (!['new', 'existing'].includes(preset)) fail('--preset is "new" or "existing"');
 
@@ -623,6 +642,7 @@ for (const zone of Object.values(config.zones)) {
   delete zone.alsoUse;
 }
 if (!config.protected.includes(AGENT_FILES)) config.protected.push(AGENT_FILES);
+config.protected = config.protected.filter((p) => p !== LOCAL_SETTINGS).concat(WIRING === 'local' ? [LOCAL_SETTINGS] : []);
 for (const key of RETIRED) {
   delete config[key];
   delete config.controls[key];
@@ -653,17 +673,44 @@ for (const a of Object.keys(FORGE_AGENTS)) {
 
 // 4. plugins first (the CLI rewrites settings.json), then settings.json, .gitignore, CLAUDE.md
 const plugins = installPlugins(d);
-const settingsFile = path.join(ROOT, '.claude', 'settings.json');
+const settingsFile = path.join(ROOT, '.claude', SETTINGS_NAME);
 writeJson(settingsFile, mergeSettings(readJson(settingsFile, {}), d));
-
-const ignoreFile = path.join(ROOT, '.gitignore');
-const ignore = readText(ignoreFile) || '';
-if (!ignore.includes('.claude/forge/.state/')) {
-  writeText(ignoreFile, ignore.replace(/\n*$/, '\n') + '\n# inv-forge per-session state\n.claude/forge/.state/\n');
+// One place only: hooks wired in both files would run twice.
+const otherFile = path.join(ROOT, '.claude', OTHER_SETTINGS);
+const other = readJson(otherFile, null);
+if (other && other.hooks && JSON.stringify(other.hooks).includes('.claude/forge/hooks/')) {
+  for (const event of Object.keys(other.hooks)) {
+    other.hooks[event] = other.hooks[event].filter((g) => !isForgeGroup(g));
+    if (!other.hooks[event].length) delete other.hooks[event];
+  }
+  writeJson(otherFile, other);
 }
 
 const claudeFile = path.join(ROOT, 'CLAUDE.md');
-writeText(claudeFile, upsertBlock(readText(claudeFile) || '# CLAUDE.md\n', claudeBlock()));
+let localIgnore = null;
+if (WIRING === 'local') {
+  // Nothing the team commits is touched: our files are ignored for this clone only.
+  const gitDir = path.join(ROOT, '.git');
+  if (fs.existsSync(gitDir) && fs.statSync(gitDir).isDirectory()) {
+    const excludeFile = path.join(gitDir, 'info', 'exclude');
+    const exclude = readText(excludeFile) || '';
+    const missingLines = LOCAL_EXCLUDES.filter((l) => !exclude.split(/\r?\n/).includes(l));
+    if (missingLines.length) {
+      fs.mkdirSync(path.dirname(excludeFile), { recursive: true });
+      writeText(excludeFile, exclude.replace(/\n*$/, '\n') + (exclude.includes('# inv-forge') ? '' : '# inv-forge (local install)\n') + missingLines.join('\n') + '\n');
+    }
+    localIgnore = true;
+  } else localIgnore = false;
+  const claudeText = readText(claudeFile);
+  if (claudeText && claudeText.includes(BLOCK_END)) writeText(claudeFile, removeBlock(claudeText));
+} else {
+  const ignoreFile = path.join(ROOT, '.gitignore');
+  const ignore = readText(ignoreFile) || '';
+  if (!ignore.includes('.claude/forge/.state/')) {
+    writeText(ignoreFile, ignore.replace(/\n*$/, '\n') + '\n# inv-forge per-session state\n.claude/forge/.state/\n');
+  }
+  writeText(claudeFile, upsertBlock(readText(claudeFile) || '# CLAUDE.md\n', claudeBlock()));
+}
 
 // 5. manifest. The checks run locally by design; a CI example is written only on request,
 //    so a project is never left with a workflow its next owner cannot run.
@@ -681,6 +728,7 @@ for (const id of Object.keys(wantedPlugins(d))) {
 writeJson(path.join(FORGE_DIR, 'forge.json'), {
   version: VERSION,
   preset,
+  wiring: WIRING,
   installedAt: new Date().toISOString(),
   previousVersion: previous ? previous.version : null,
   pins: { angularSkill: PINS.angularSkill.commit, plugins: pluginVersions },
@@ -692,6 +740,10 @@ const lines = [];
 lines.push(`inv-forge ${VERSION} ${previous ? 'updated' : 'installed'} in ${ROOT}`);
 lines.push('');
 lines.push(`Preset: ${preset}${flags.preset ? '' : previous ? ' (kept from the previous install)' : ` (auto-detected from ${d.sourceFiles} source files)`}`);
+lines.push(WIRING === 'local'
+  ? `Wiring: local. Hooks and plugins are in .claude/${SETTINGS_NAME}; CLAUDE.md and .gitignore are not touched; ` +
+    (localIgnore ? 'inv-forge\'s files are ignored through .git/info/exclude, so nothing of it is committed.' : 'could NOT write .git/info/exclude (worktree?): ignore inv-forge\'s files by hand.')
+  : 'Wiring: shared (.claude/settings.json, CLAUDE.md, .gitignore). Use --local to install for this developer only.');
 lines.push(`Frontend: ${d.hasFrontend ? 'Angular ' + d.angular : 'not found'}`);
 lines.push(`Backend:  ${d.hasBackend ? (d.solution || 'projects under api/') + (d.usesEfCore ? ', EF Core' : '') : 'not found (create one with --scaffold-backend <Name>)'}`);
 if (scaffolded) {

@@ -24,6 +24,19 @@ Then, in a project, after the starter's `/setup`: run **`/forge-setup`** in Clau
 
 Without Claude: `node inv-forge/setup/setup.js <project>` installs, `--check` reports drift.
 
+### Only for me: `--local`
+
+In a project where inv-forge is optional (other people work on it without it), install it for yourself only:
+
+```bash
+node inv-forge/setup/setup.js <project> --local
+```
+
+Hooks and plugins go to `.claude/settings.local.json`. `.claude/settings.json`, `CLAUDE.md` and `.gitignore`
+are not touched, and inv-forge's files are ignored through `.git/info/exclude`, so nothing of it reaches a
+commit. The choice is remembered: updating later needs no flag. `--shared` moves the project back to the
+committed wiring. The cost is the obvious one: whoever has not installed it works with no controls.
+
 ## What a project gets
 
 | Piece | Where | Purpose |

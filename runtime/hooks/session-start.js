@@ -80,8 +80,9 @@ if (exceptions.length) {
 }
 
 // Drift: a starter /upgrade can rewrite .claude/settings.json and drop some of the wiring.
-const settings = lib.readJson(path.join(lib.ROOT, '.claude', 'settings.json'), {});
-const wired = JSON.stringify(settings.hooks || {});
+// The wiring is in settings.json, or in settings.local.json for a local install.
+const wired = ['settings.json', 'settings.local.json']
+  .map((f) => JSON.stringify((lib.readJson(path.join(lib.ROOT, '.claude', f), {}) || {}).hooks || {})).join('');
 const missing = ['pre-edit.js', 'pre-bash.js', 'skill-log.js', 'post-edit.js', 'stop-verify.js', 'prompt-route.js'].filter((f) => !wired.includes(f));
 const lost = ['lib.js', 'check.js'].filter((f) => !fs.existsSync(path.join(lib.FORGE_DIR, f)));
 if (missing.length || lost.length) {
