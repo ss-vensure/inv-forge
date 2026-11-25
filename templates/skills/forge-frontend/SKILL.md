@@ -15,7 +15,10 @@ about UI components or styling, this file wins.
    through the inputs, outputs and variants it documents. Check the Prismatic Storybook for what exists and how
    it is configured; do not guess from memory.
 2. **Syncfusion directly when Prismatic does not cover the need**, for example data grids and charts. Import
-   only the modules you use.
+   only the modules you use. The starter's `CLAUDE.md` says never to import `@syncfusion/*` directly; that rule
+   is written for RAiCEr tools, which have no licence. The Innovation team holds one, so in a forge project
+   this file wins and the import is allowed. Do not fall back to hand-written HTML or an open-source control
+   because of the starter's rule.
 3. **Compose.** A screen component of ours that arranges Prismatic and Syncfusion elements without altering
    them is the normal way to build a page.
 4. **A component built from scratch is the last resort.** Say why 1 to 3 do not work before writing it.

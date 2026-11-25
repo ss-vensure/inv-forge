@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2
+
+- `forge-frontend` states that importing Syncfusion directly is allowed in a forge project and that it wins over
+  the starter's "never import @syncfusion" rule, which exists for tools without a licence.
+
 ## 0.4.1
 
 - `setup.js --local`: installs for one developer only, for a project where inv-forge is optional. Hooks and
