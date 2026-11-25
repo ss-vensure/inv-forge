@@ -31,8 +31,12 @@ const out = [
     ? '- bug: delegate to the forge-debugger agent with the symptom and how to reproduce it. It finds the root cause, ' +
       'writes the failing test, then fixes. Do not patch a symptom yourself.'
     : '- bug: superpowers:systematic-debugging. Root cause, failing test, then the fix.',
-  '- refactor: no behaviour change. Tests green before and after; past "small", delegate to the zone agent.' +
-    (config.zones && config.zones.backend ? ' For C#, whoever does it loads dotnet:csharp-refactoring first.' : ''),
+  agents.includes('forge-refactorer')
+    ? '- refactor: no behaviour change. Delegate to the forge-refactorer agent with what to restructure and why. ' +
+      'Tests green before and after.'
+    : '- refactor: no behaviour change. Tests green before and after.',
+  'Each step has its agent, and a hook holds each agent to the skills of its step: building (zone agents), ' +
+    'fixing (forge-debugger), restructuring (forge-refactorer), reviewing tests (forge-test-reviewer, inside forge-review).',
   'The agents are born with their skills; you still check their work (the diff, the test output) before telling the user it is done.',
 ];
 process.stdout.write(out.join('\n') + '\n');

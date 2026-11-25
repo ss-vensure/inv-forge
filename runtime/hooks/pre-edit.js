@@ -78,7 +78,9 @@ if (plansDir && rel.startsWith(plansDir + '/') && APPROVAL.test(after) && !APPRO
 // 5. The skills that govern this file (ours and the official ones) must have been loaded in
 //    this session before it changes.
 const loaded = lib.loadedSkills(input, state);
-const unread = lib.skillsFor(config, rel).filter((s) => !loaded.includes(s));
+// The file decides some (skillRules); the step being done decides others (the agent doing it).
+const required = lib.skillsFor(config, rel).concat(input.agent_id ? lib.agentRequires(config, input.agent_type, 'needs', rel) : []);
+const unread = [...new Set(required)].filter((s) => !loaded.includes(s));
 if (unread.length) {
   enforce('skills',
     `Load ${unread.map((s) => `"${s}"`).join(', ')} before editing ${rel}.\n` +
@@ -87,6 +89,11 @@ if (unread.length) {
 }
 
 const zone = lib.zoneOf(config, rel);
+
+// 5a. An agent that reviews does not write.
+if (input.agent_id && (lib.AGENTS[input.agent_type] || {}).readOnly) {
+  blocks.push(`[agent] The ${input.agent_type} agent reviews; it does not edit files. Report the finding instead.`);
+}
 
 // 5b. An agent that builds one zone stays in it.
 const own = (lib.AGENTS[input.agent_type] || {}).zone;

@@ -414,3 +414,54 @@ test('a forge agent cannot finish while its zone fails; other subagents are left
   assert.match(held.err, /boom: 3 tests failed/);
   assert.doesNotMatch(held.err, /verification-before-completion|HIGH-RISK/, 'what is said to the user is not the agent\'s job');
 });
+
+test('each step has its skills: the agent doing it cannot skip them', () => {
+  const root = makeProject();
+  install(root);
+  const as = (agent_type, agent_id) => ({ agent_id, agent_type });
+  const load = (who, skill) => hook(root, 'skill-log.js', Object.assign({ tool_name: 'Skill', tool_input: { skill } }, who));
+  const file = 'api/src/Demo.Domain/Price.cs';
+
+  // Fixing: the debugger loads the debugging method before it edits.
+  const dbg = as('forge-debugger', 'd1');
+  for (const s of ['forge-backend', 'superpowers:test-driven-development']) load(dbg, s);
+  assert.match(edit(root, file, undefined, dbg).err, /Load "systematic-debugging" before/);
+  load(dbg, 'superpowers:systematic-debugging');
+  assert.doesNotMatch(edit(root, file, undefined, dbg).err, /systematic-debugging/);
+
+  // Restructuring: the refactorer loads the refactoring skill before it touches C#, not for TypeScript.
+  const ref = as('forge-refactorer', 'r1');
+  for (const s of ['forge-backend', 'superpowers:test-driven-development']) load(ref, s);
+  assert.match(edit(root, file, undefined, ref).err, /Load "csharp-refactoring" before/);
+  load(ref, 'dotnet:csharp-refactoring');
+  assert.doesNotMatch(edit(root, file, undefined, ref).err, /csharp-refactoring/);
+  assert.doesNotMatch(edit(root, 'src/app/core/rules.ts', undefined, ref).err, /csharp-refactoring/);
+
+  // Reviewing tests: the reviewer never edits, and does not report before loading the test-quality skills.
+  const rev = as('forge-test-reviewer', 't1');
+  assert.match(edit(root, file, undefined, rev).err, /reviews; it does not edit/);
+  const stopAs = (who) => hook(root, 'stop-verify.js', Object.assign({ hook_event_name: 'SubagentStop' }, who));
+  const held = stopAs(rev);
+  assert.strictEqual(held.code, 2);
+  assert.match(held.err, /Load "assertion-quality", "test-anti-patterns"/);
+  load(rev, 'dotnet-test:assertion-quality');
+  load(rev, 'dotnet-test:test-anti-patterns');
+  assert.strictEqual(stopAs(rev).code, 0);
+});
+
+test('changed tests are reviewed by the test reviewer before the turn ends', () => {
+  const root = makeProject();
+  install(root);
+  write(root, 'src/app/people/people.service.ts', 'export class PeopleService { n = 1; }\n');
+  write(root, 'src/app/people/people.service.spec.ts', 'it("counts", () => { expect(1).toBe(1); });\n');
+  loadSkill(root, 'forge-review');
+  const s = hook(root, 'stop-verify.js', {});
+  assert.strictEqual(s.code, 2, s.err);
+  assert.match(s.err, /tests of this change were not reviewed.*forge-test-reviewer/s);
+  const rev = { agent_id: 't1', agent_type: 'forge-test-reviewer' };
+  for (const skill of ['dotnet-test:assertion-quality', 'dotnet-test:test-anti-patterns']) {
+    hook(root, 'skill-log.js', Object.assign({ tool_name: 'Skill', tool_input: { skill } }, rev));
+  }
+  assert.strictEqual(hook(root, 'stop-verify.js', Object.assign({ hook_event_name: 'SubagentStop' }, rev)).code, 0);
+  assert.strictEqual(hook(root, 'stop-verify.js', {}).code, 0);
+});

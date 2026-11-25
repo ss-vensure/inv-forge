@@ -246,11 +246,28 @@ function saveState(sessionId, state) {
 // The agents setup installs in .claude/agents/. `zone` is the only one an agent builds in (null: any).
 // `skills` are the ones its definition preloads: they are in its context from the first turn, without
 // passing through the Skill tool, so the skill log never sees them.
+// A step of the work is done by one kind of agent, and a hook knows which agent is acting. So the skills
+// of a step are tied to its agent: `needs` before it edits (optionally only some files), `beforeDone`
+// before it may finish. `ifZone` skips a requirement in a project without that zone (its plugin is not
+// installed there). `readOnly` agents review; they never edit.
 const AGENTS = {
   'forge-backend-dev': { zone: 'backend', skills: ['forge-backend'] },
   'forge-frontend-dev': { zone: 'frontend', skills: ['forge-frontend', 'angular-developer'] },
-  'forge-debugger': { zone: null, skills: [] },
+  'forge-debugger': { zone: null, skills: [], needs: [{ skills: ['systematic-debugging'] }] },
+  'forge-refactorer': { zone: null, skills: [], needs: [{ ifZone: 'backend', paths: ['**/*.cs'], skills: ['csharp-refactoring'] }] },
+  'forge-test-reviewer': { zone: null, skills: [], readOnly: true,
+    beforeDone: [{ ifZone: 'backend', skills: ['assertion-quality', 'test-anti-patterns'] }] },
 };
+
+function agentRequires(config, agentType, key, rel) {
+  const out = [];
+  for (const r of (AGENTS[agentType] || {})[key] || []) {
+    if (r.ifZone && !(config.zones && config.zones[r.ifZone])) continue;
+    if (r.paths && !(rel && matchAny(rel, r.paths))) continue;
+    for (const s of r.skills) if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
 
 // A subagent has a context of its own: what the main conversation loaded is not in it, and the other
 // way round. So the skills a hook counts as loaded are kept per agent.
@@ -329,6 +346,6 @@ module.exports = {
   toPosix, relPath, globToRegex, matchAny, zoneOf, skillsFor, isTest, isTddProtected,
   git, isGitRepo, changedFiles, addedLines, fingerprint, hasNewTest, TEST_DECLARATION,
   loadExceptions, isExpired, activeException,
-  AGENTS, loadedSkills, recordSkills,
+  AGENTS, agentRequires, loadedSkills, recordSkills,
   loadState, saveState, countSuppressions, newSuppressions, run,
 };

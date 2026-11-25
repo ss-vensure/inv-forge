@@ -36,11 +36,10 @@ change cannot touch it (no backend code: skip data; no UI: nothing to skip, the 
 | Simplicity | What can be deleted or made simpler? Code nothing calls, abstractions with one use, duplicated logic, replaced code left behind. |
 | Tests | Which behaviour in the diff has no test, and which tests would still pass if the code were wrong? |
 
-The Tests reviewer of a change with .NET tests loads `dotnet-test:assertion-quality` and
-`dotnet-test:test-anti-patterns` before reading them, and `dotnet-test:test-gap-analysis` when the question is
-what was left untested. Say so in its instructions. They are how a test that cannot fail is recognised; this
-is what the toolkit does instead of mutation testing. If a skill is not available in the session, the
-reviewer says so in its findings rather than reviewing without it in silence.
+The Tests lens is not a general agent: launch the `forge-test-reviewer` agent for it. It carries the
+test-quality skills of the .NET plugin (`assertion-quality`, `test-anti-patterns`), a hook does not let it
+report before it has loaded them, and the turn cannot end on changed tests until it has run. That is what
+the toolkit does instead of mutation testing.
 
 Each reviewer returns findings as: file and line, what is wrong, a concrete scenario where it fails, and how
 sure they are. "Looks fine" is a valid answer. Tell them not to pad.

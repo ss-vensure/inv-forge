@@ -43,7 +43,7 @@ committed wiring. The cost is the obvious one: whoever has not installed it work
 |---|---|---|
 | Runtime | `.claude/forge/` | Hooks (including the router that runs on every message), `check.js`, `config.json`, baseline, exceptions, version manifest |
 | Our skills | `.claude/skills/forge-backend`, `forge-frontend`, `forge-review` | How we build, and how a change is reviewed |
-| Agents | `.claude/agents/forge-backend-dev`, `forge-frontend-dev`, `forge-debugger` | Who builds a slice or fixes a bug, with the skills already in context |
+| Agents | `.claude/agents/forge-backend-dev`, `forge-frontend-dev`, `forge-debugger`, `forge-refactorer`, `forge-test-reviewer` | One agent per step of the work, each held to the skills of its step |
 | Official skills | plugins in `.claude/settings.json`, `angular-developer` vendored | Superpowers, .NET, Angular (versions in `pins.json` and `forge.json`) |
 | Wiring | marked entries in `.claude/settings.json`, `CLAUDE.md`, `.gitignore` | Survives re-runs; re-run after a starter `/upgrade` |
 
@@ -121,6 +121,24 @@ before which files change, and a hook refuses the edit until they are. The defau
 
 A skill is asked for once per conversation (and once per agent, whose context is its own) and only when a file
 of its kind is touched, so a frontend-only session never loads the .NET ones. The maintainer edits the rules; a Claude session cannot.
+
+#### By step, not only by file
+
+A file says what kind of code is being touched, not what is being done to it: building, fixing, restructuring
+and reviewing can all touch the same file. A hook cannot see intent, but it does know which agent is acting,
+and each step has its agent. So the skills of a step are tied to the agent that does it:
+
+| Step | Who does it | Skills a hook holds it to |
+|---|---|---|
+| Design and plan | the main conversation | `brainstorming`, `writing-plans` (to write the plan) |
+| Build | `forge-backend-dev`, `forge-frontend-dev` | ours for the zone, test-first, the official one for the file |
+| Fix a bug | `forge-debugger` | `systematic-debugging` before its first edit, plus the build ones |
+| Restructure or clean up | `forge-refactorer` | `csharp-refactoring` before it touches C#, plus the build ones |
+| Review the tests | `forge-test-reviewer` | `assertion-quality`, `test-anti-patterns` before it may report; it cannot edit |
+| Present as done | the main conversation | `verification-before-completion`; `forge-review` from medium risk; the test reviewer when tests changed |
+
+What still rests on Claude is choosing the route. If it does a refactor itself instead of delegating it, the
+file rules apply and the step rules do not; the route line at the top of each reply is where that shows.
 
 What this proves is that the skill was loaded, not that it was followed. Where following it can be checked,
 another control does it: `tdd` for test-first, `plan` for the approved plan, `verify` for the evidence.

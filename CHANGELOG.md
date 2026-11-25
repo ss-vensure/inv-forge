@@ -9,9 +9,11 @@ Tools that answer instead of Claude guessing.
   skills tell Claude to find references before renaming, deleting or writing a duplicate.
 - **Angular MCP server** (`ng mcp --read-only`), for projects on Angular 20+: in `.mcp.json` for a shared
   install, registered for the developer (`claude mcp add --scope local`) for a local one.
-- **.NET skills that were installed but never asked for:** `assertion-quality`, `test-anti-patterns` and
-  `test-gap-analysis` in the Tests lens of `forge-review`; `csharp-refactoring` on the refactor route. These
-  are instructions, not hook-enforced.
+- **Skills by step, not only by file.** Each step has an agent and a hook holds the agent to the skills of
+  its step: `forge-debugger` to `systematic-debugging`; the new `forge-refactorer` to `csharp-refactoring`
+  before it touches C#; the new `forge-test-reviewer` (read-only) to `assertion-quality` and
+  `test-anti-patterns` before it may report.
+- A turn that changed tests on a medium- or high-risk change cannot end until the test reviewer has run.
 
 ## 0.4.2
 

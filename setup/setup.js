@@ -307,7 +307,7 @@ const WIRED_HOOKS = ['session-start.js', 'pre-edit.js', 'pre-bash.js', 'skill-lo
 
 // The agents a routed request is delegated to, and the zone each one needs (null: any project).
 // Keep in step with AGENTS in runtime/lib.js; a test checks it.
-const FORGE_AGENTS = { 'forge-backend-dev': 'backend', 'forge-frontend-dev': 'frontend', 'forge-debugger': null };
+const FORGE_AGENTS = { 'forge-backend-dev': 'backend', 'forge-frontend-dev': 'frontend', 'forge-debugger': null, 'forge-refactorer': null, 'forge-test-reviewer': null };
 const AGENT_FILES = '.claude/agents/forge-*.md';
 const LOCAL_EXCLUDES = ['.claude/forge/', AGENT_FILES, '.claude/skills/forge-*/', '.claude/skills/angular-developer/', '.claude/settings.local.json'];
 const agentFile = (name) => path.join(ROOT, '.claude', 'agents', name + '.md');

@@ -76,7 +76,15 @@ if (lib.mode(config, 'verify') !== 'off' && stale.length) {
 }
 
 if (agent) {
+  // The skills of this step: an agent does not report before it has loaded them.
+  const mine = lib.loadedSkills(input, state);
+  const owed = lib.agentRequires(config, input.agent_type, 'beforeDone').filter((s) => !mine.includes(s));
+  if (owed.length && lib.mode(config, 'skills') === 'block') {
+    failures.push(`Load ${owed.map((s) => `"${s}"`).join(', ')} with the Skill tool and apply them to what you reviewed before you report. ` +
+      'If one does not exist in this session, say so in your report instead of finishing without it.');
+  }
   const key = `agentStopBlocks_${input.agent_type}`;
+  if (!failures.length) state.agentsDone = [...new Set((state.agentsDone || []).concat(input.agent_type))];
   if (!failures.length || (state[key] || 0) >= config.maxStopBlocks) {
     state[key] = 0;
     lib.saveState(input.session_id, state);
@@ -105,6 +113,15 @@ const reviewFrom = (config.review && config.review.requiredFromRisk) || 'medium'
 if (production > 0 && risk.TIERS.indexOf(riskReport.tier) >= risk.TIERS.indexOf(reviewFrom) && !state.skills.includes('forge-review')) {
   report('review', `This change is ${riskReport.tier.toUpperCase()} risk and has not been independently reviewed in this session.\n` +
     'Load the "forge-review" skill and run it on the uncommitted changes, fix what it confirms, and include its result in your report.');
+}
+
+// 4b. Tests are what the human reads instead of the code, so a change to them is reviewed by the agent
+//     that carries the test-quality skills, not by whoever wrote them.
+const testsChanged = files.some((f) => { const z = lib.zoneOf(config, f.path); return z && lib.isTest(z, f.path); });
+if (production > 0 && testsChanged && risk.TIERS.indexOf(riskReport.tier) >= risk.TIERS.indexOf(reviewFrom) &&
+    !(state.agentsDone || []).includes('forge-test-reviewer')) {
+  report('review', 'The tests of this change were not reviewed. Launch the "forge-test-reviewer" agent on the uncommitted ' +
+    'changes (it is the Tests lens of forge-review), fix what it confirms, and include its result in your report.');
 }
 
 // 5. Work is not presented as done before the skills for finishing it were loaded.
